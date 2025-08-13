@@ -1,0 +1,48 @@
+# Project data files
+*.iif
+*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+pip-wheel-metadata/
+dist/
+build/
+*.egg-info/
+.eggs/
+htmlcov/
+.coverage*
+coverage.xml
+
+# Editors/IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temp
+*.log
+*.tmp
+*.swp
+*.swo
+
+
