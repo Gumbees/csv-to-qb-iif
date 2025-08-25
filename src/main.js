@@ -3,6 +3,10 @@ const path = require('path');
 const fs = require('fs');
 const { parse } = require('csv-parse/sync');
 const dayjs = require('dayjs');
+const Database = require('./database');
+
+// Initialize database
+const db = new Database();
 
 function parseCliArgs(argv) {
   const args = argv.slice(1);
@@ -144,19 +148,64 @@ ipcMain.handle('pick-file', async () => {
     if (res.canceled || !res.filePaths.length) return null;
     const filePath = res.filePaths[0];
     const content = fs.readFileSync(filePath, 'utf-8');
+    
+    // Check for duplicates and store CSV
+    const filename = path.basename(filePath);
+    const importResult = await db.storeCsvImport(filename, content);
+    
+    if (importResult.isDuplicate) {
+      return { 
+        error: importResult.message,
+        isDuplicate: true,
+        importId: importResult.id
+      };
+    }
+    
+    // Parse CSV and return preview
     const bills = parseBillsFromCsv(content);
-    return { bills, filePath };
+    return { 
+      bills, 
+      filePath, 
+      importId: importResult.id,
+      isDuplicate: false 
+    };
   } catch (err) {
     return { error: err.message || String(err) };
   }
 });
 
-ipcMain.handle('drop-csv', async (evt, content) => {
+ipcMain.handle('drop-csv', async (evt, content, filename = 'dropped.csv') => {
   try {
+    // Check for duplicates and store CSV
+    const importResult = await db.storeCsvImport(filename, content);
+    
+    if (importResult.isDuplicate) {
+      return { 
+        error: importResult.message,
+        isDuplicate: true,
+        importId: importResult.id
+      };
+    }
+    
+    // Parse CSV and return preview
     const bills = parseBillsFromCsv(content);
-    return { bills };
+    return { 
+      bills, 
+      importId: importResult.id,
+      isDuplicate: false 
+    };
   } catch (err) {
     return { error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('process-import', async (evt, importId, bills) => {
+  try {
+    await db.processCsvImport(importId, bills);
+    return { success: true };
+  } catch (err) {
+    console.error('Error processing import:', err);
+    return { error: err.message };
   }
 });
 
@@ -165,7 +214,98 @@ ipcMain.handle('export-iif', async (evt, bills, suggestedName = 'bills_output.ii
   const res = await dialog.showSaveDialog({ defaultPath: suggestedName, filters: [{ name: 'IIF', extensions: ['iif'] }] });
   if (res.canceled || !res.filePath) return null;
   fs.writeFileSync(res.filePath, iif, 'utf-8');
+  
+  // Record export in database
+  try {
+    const totalAmount = bills.reduce((sum, bill) => sum + bill.total_amount, 0);
+    const transactionIds = bills.map(bill => bill.dbTransactionId || 0).filter(id => id > 0);
+    
+    if (transactionIds.length > 0) {
+      await db.recordExport(
+        path.basename(res.filePath),
+        res.filePath,
+        transactionIds,
+        totalAmount
+      );
+    }
+  } catch (err) {
+    console.error('Error recording export to database:', err);
+  }
+  
   return { saved: true, path: res.filePath };
+});
+
+// Database operation handlers
+ipcMain.handle('get-dashboard-stats', async () => {
+  try {
+    return await db.getDashboardStats();
+  } catch (err) {
+    console.error('Error getting dashboard stats:', err);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('get-recent-transactions', async (evt, hours = 24) => {
+  try {
+    return await db.getRecentTransactions(hours);
+  } catch (err) {
+    console.error('Error getting recent transactions:', err);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('get-all-transactions', async () => {
+  try {
+    return await db.getAllTransactions();
+  } catch (err) {
+    console.error('Error getting all transactions:', err);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('get-inventory-summary', async () => {
+  try {
+    return await db.getInventorySummary();
+  } catch (err) {
+    console.error('Error getting inventory summary:', err);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('get-inventory-for-export', async () => {
+  try {
+    return await db.getInventoryForExport();
+  } catch (err) {
+    console.error('Error getting inventory for export:', err);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('get-import-history', async () => {
+  try {
+    return await db.getImportHistory();
+  } catch (err) {
+    console.error('Error getting import history:', err);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('get-export-history', async () => {
+  try {
+    return await db.getExportHistory();
+  } catch (err) {
+    console.error('Error getting export history:', err);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('get-item-transactions', async (evt, itemId) => {
+  try {
+    return await db.getItemTransactions(itemId);
+  } catch (err) {
+    console.error('Error getting item transactions:', err);
+    return { error: err.message };
+  }
 });
 
 app.whenReady().then(() => {
@@ -193,6 +333,10 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  db.close();
 });
 
 

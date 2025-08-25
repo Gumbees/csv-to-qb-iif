@@ -3,246 +3,1083 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';" />
-    <title>CSV ➜ QuickBooks Bills (IIF)</title>
+    <title>CSV ➜ QuickBooks Bills (IIF) - Dashboard</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; }
-      header { padding: 16px 24px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
-      .btn { border: 1px solid #111827; background: #111827; color: #fff; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
-      .btn.secondary { background: #fff; color: #111827; }
-      .container { padding: 16px 24px; }
-      .dropzone { border: 2px dashed #9ca3af; border-radius: 12px; padding: 24px; text-align: center; color: #6b7280; }
-      .tabs { display: flex; gap: 8px; margin-top: 16px; }
-      .tab { padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 9999px; cursor: pointer; }
-      .tab.active { background: #111827; color: #fff; border-color: #111827; }
-      .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-top: 16px; }
-      .row { display: flex; gap: 12px; align-items: center; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      body { 
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; 
+        margin: 0; 
+        background: #f8fafc;
+      }
+      header { 
+        padding: 16px 24px; 
+        border-bottom: 1px solid #e5e7eb; 
+        background: white;
+        display: flex; 
+        align-items: center; 
+        justify-content: space-between; 
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+      .btn { 
+        border: 1px solid #111827; 
+        background: #111827; 
+        color: #fff; 
+        padding: 10px 16px; 
+        border-radius: 8px; 
+        cursor: pointer; 
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+      .btn:hover {
+        background: #374151;
+        border-color: #374151;
+      }
+      .btn.secondary { 
+        background: #fff; 
+        color: #111827; 
+        border-color: #d1d5db;
+      }
+      .btn.secondary:hover {
+        background: #f9fafb;
+        border-color: #9ca3af;
+      }
+      .btn.success {
+        background: #059669;
+        border-color: #059669;
+      }
+      .btn.success:hover {
+        background: #047857;
+        border-color: #047857;
+      }
+      .container { 
+        padding: 24px; 
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+      .dropzone { 
+        border: 2px dashed #9ca3af; 
+        border-radius: 12px; 
+        padding: 40px; 
+        text-align: center; 
+        color: #6b7280;
+        background: white;
+        transition: all 0.2s;
+      }
+      .dropzone:hover {
+        border-color: #111827;
+        background: #f9fafb;
+      }
+      .dropzone.dragover {
+        border-color: #059669;
+        background: #f0fdf4;
+      }
+      .tabs { 
+        display: flex; 
+        gap: 8px; 
+        margin-top: 24px; 
+        background: white;
+        padding: 16px 24px;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+      .tab { 
+        padding: 10px 16px; 
+        border: 1px solid #e5e7eb; 
+        border-radius: 9999px; 
+        cursor: pointer; 
+        transition: all 0.2s;
+        font-weight: 500;
+      }
+      .tab:hover {
+        background: #f9fafb;
+        border-color: #d1d5db;
+      }
+      .tab.active { 
+        background: #111827; 
+        color: #fff; 
+        border-color: #111827; 
+      }
+      .card { 
+        border: 1px solid #e5e7eb; 
+        border-radius: 12px; 
+        padding: 24px; 
+        margin-top: 24px; 
+        background: white;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+      .row { 
+        display: flex; 
+        gap: 12px; 
+        align-items: center; 
+      }
+      .grid { 
+        display: grid; 
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+        gap: 24px; 
+      }
       .muted { color: #6b7280; }
       .list ul { margin: 0; padding-left: 20px; }
       .hidden { display: none; }
+      .db-content { margin-top: 16px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { padding: 12px; text-align: left; }
+      th { background: #f9fafb; font-weight: 600; }
+      tr:hover { background: #f9fafb; }
+      
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 32px;
+      }
+      
+      .stat-card {
+        background: white;
+        padding: 24px;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        text-align: center;
+      }
+      
+      .stat-number {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 8px;
+      }
+      
+      .stat-label {
+        color: #6b7280;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      
+      .action-buttons {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 32px;
+      }
+      
+      .import-preview {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px;
+        margin-top: 16px;
+      }
+      
+      .duplicate-warning {
+        background: #fef3c7;
+        border: 1px solid #f59e0b;
+        color: #92400e;
+        padding: 12px;
+        border-radius: 8px;
+        margin-top: 16px;
+      }
+      
+      .success-message {
+        background: #d1fae5;
+        border: 1px solid #10b981;
+        color: #065f46;
+        padding: 12px;
+        border-radius: 8px;
+        margin-top: 16px;
+      }
+      
+      .modal {
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .modal-content {
+        background-color: white;
+        margin: auto;
+        padding: 0;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 600px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      }
+      
+      .modal-header {
+        padding: 20px 24px;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      .modal-body {
+        padding: 24px;
+      }
+      
+      .btn-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6b7280;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+      }
+      
+      .btn-close:hover {
+        background: #f3f4f6;
+        color: #374151;
+      }
+      
+      .export-option {
+        margin-bottom: 20px;
+        padding: 16px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #f9fafb;
+      }
+      
+      .export-option label {
+        display: block;
+        cursor: pointer;
+      }
+      
+      .export-option input[type="checkbox"] {
+        margin-right: 12px;
+        transform: scale(1.2);
+      }
     </style>
   </head>
   <body>
     <header>
-      <div><strong>CSV ➜ QuickBooks Bills (IIF)</strong></div>
+      <div><strong>CSV ➜ QuickBooks Bills (IIF) - Dashboard</strong></div>
       <div class="row">
-        <button id="pick" class="btn">Open CSV</button>
-        <button id="export" class="btn secondary">Export IIF</button>
+        <button id="import-btn" class="btn success">Import CSV</button>
+        <button id="export-btn" class="btn secondary">Export IIF</button>
       </div>
     </header>
+    
     <div class="container">
-      <input id="file" type="file" accept=".csv" class="hidden" />
-      <div id="dz" class="dropzone">Drag & drop CSV here</div>
-      <div class="tabs">
-        <div id="tab-gallery" class="tab active">Gallery</div>
-        <div id="tab-list" class="tab">List</div>
-      </div>
-      <div id="gallery" class="card">
-        <div id="gallery-header"></div>
-        <div id="terms-editor"></div>
-        <div id="gallery-lines"></div>
-        <div class="row" style="justify-content: space-between; margin-top: 12px;">
-          <button id="prev" class="btn secondary">Prev</button>
-          <div id="pos" class="muted"></div>
-          <button id="next" class="btn secondary">Next</button>
+      <!-- Dashboard Stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-number" id="total-transactions">-</div>
+          <div class="stat-label">Total Transactions</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="total-inventory">-</div>
+          <div class="stat-label">Inventory Items</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="total-value">$0</div>
+          <div class="stat-label">Inventory Value</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="recent-transactions">-</div>
+          <div class="stat-label">Recent (30 days)</div>
         </div>
       </div>
-      <div id="list" class="card hidden"></div>
+      
+      <!-- Action Buttons -->
+      <div class="action-buttons">
+        <button id="export-24h" class="btn secondary">Export Last 24 Hours</button>
+        <button id="export-options" class="btn secondary">Export Options</button>
+        <button id="refresh-dashboard" class="btn secondary">Refresh Dashboard</button>
+      </div>
+      
+      <!-- Export Options Modal -->
+      <div id="export-modal" class="modal hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Export Options</h3>
+            <button id="close-export-modal" class="btn-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="export-option">
+              <label>
+                <input type="checkbox" id="export-transactions" checked>
+                <strong>Transactions (Purchase Orders)</strong>
+                <div class="muted">Export all purchase order transactions as IIF format</div>
+              </label>
+            </div>
+            <div class="export-option">
+              <label>
+                <input type="checkbox" id="export-inventory">
+                <strong>Inventory Items</strong>
+                <div class="muted">Export inventory items as CSV with transaction history</div>
+              </label>
+            </div>
+            <div class="export-option">
+              <label>
+                <input type="checkbox" id="export-both">
+                <strong>Both</strong>
+                <div class="muted">Export transactions as IIF and inventory as CSV</div>
+              </label>
+            </div>
+            <div style="margin-top: 20px;">
+              <button id="confirm-export" class="btn success">Export Selected Data</button>
+              <button id="cancel-export" class="btn secondary">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Import Section -->
+      <div class="card" id="import-section">
+        <h3>Import New CSV Data</h3>
+        <div id="dz" class="dropzone">
+          <div style="font-size: 1.2rem; margin-bottom: 8px;">📁</div>
+          <div>Drag & drop CSV file here or click to browse</div>
+          <div style="margin-top: 8px; font-size: 0.875rem; color: #9ca3af;">
+            Supports: Vendor, RefNumber, Date, Item, Qty, Cost, Description
+          </div>
+        </div>
+        <input id="file" type="file" accept=".csv" class="hidden" />
+        
+        <div id="import-preview" class="import-preview hidden">
+          <h4>Import Preview</h4>
+          <div id="preview-content"></div>
+          <div style="margin-top: 16px;">
+            <button id="confirm-import" class="btn success">Confirm Import</button>
+            <button id="cancel-import" class="btn secondary">Cancel</button>
+          </div>
+        </div>
+        
+        <div id="duplicate-warning" class="duplicate-warning hidden">
+          <strong>⚠️ Duplicate File Detected</strong>
+          <div id="duplicate-message"></div>
+        </div>
+        
+        <div id="success-message" class="success-message hidden">
+          <strong>✅ Import Successful!</strong>
+          <div id="success-details"></div>
+        </div>
+      </div>
+      
+      <!-- Data Tabs -->
+      <div class="tabs">
+        <div id="tab-dashboard" class="tab active">Dashboard</div>
+        <div id="tab-transactions" class="tab">Transactions</div>
+        <div id="tab-inventory" class="tab">Inventory</div>
+        <div id="tab-imports" class="tab">Import History</div>
+        <div id="tab-exports" class="tab">Export History</div>
+      </div>
+      
+      <!-- Dashboard Content -->
+      <div id="dashboard-content" class="card">
+        <h3>Recent Activity</h3>
+        <div id="recent-activity"></div>
+      </div>
+      
+      <!-- Transactions Content -->
+      <div id="transactions-content" class="card hidden">
+        <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
+          <h3>All Transactions</h3>
+          <button id="refresh-transactions" class="btn secondary">Refresh</button>
+        </div>
+        <div id="transactions-table"></div>
+      </div>
+      
+      <!-- Inventory Content -->
+      <div id="inventory-content" class="card hidden">
+        <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
+          <h3>Inventory Summary</h3>
+          <button id="refresh-inventory" class="btn secondary">Refresh</button>
+        </div>
+        <div id="inventory-table"></div>
+      </div>
+      
+      <!-- Import History Content -->
+      <div id="imports-content" class="card hidden">
+        <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
+          <h3>Import History</h3>
+          <button id="refresh-imports" class="btn secondary">Refresh</button>
+        </div>
+        <div id="imports-table"></div>
+      </div>
+      
+      <!-- Export History Content -->
+      <div id="exports-content" class="card hidden">
+        <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
+          <h3>Export History</h3>
+          <button id="refresh-exports" class="btn secondary">Refresh</button>
+        </div>
+        <div id="exports-table"></div>
+      </div>
     </div>
+    
     <script>
-      const state = { bills: [], idx: 0 };
-      const TERMS_OPTIONS = [
-        'Due upon receipt',
-        'Net 7',
-        'Net 15',
-        'Net 30',
-        'Net 45',
-        'Net 60',
-        'Net 90',
-      ];
+      const state = { 
+        currentImportId: null,
+        currentBills: [],
+        dashboardStats: null
+      };
 
-      function formatDateMMDDYYYY(d) {
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        const yyyy = d.getFullYear();
-        return `${mm}/${dd}/${yyyy}`;
+      // Initialize dashboard
+      document.addEventListener('DOMContentLoaded', () => {
+        loadDashboard();
+        setupEventListeners();
+      });
+
+      function setupEventListeners() {
+        // Tab switching
+        document.getElementById('tab-dashboard').addEventListener('click', () => showTab('dashboard'));
+        document.getElementById('tab-transactions').addEventListener('click', () => showTab('transactions'));
+        document.getElementById('tab-inventory').addEventListener('click', () => showTab('inventory'));
+        document.getElementById('tab-imports').addEventListener('click', () => showTab('imports'));
+        document.getElementById('tab-exports').addEventListener('click', () => showTab('exports'));
+        
+        // Action buttons
+        document.getElementById('import-btn').addEventListener('click', () => document.getElementById('file').click());
+        document.getElementById('export-btn').addEventListener('click', () => showExportOptions());
+        document.getElementById('export-24h').addEventListener('click', () => exportRecentData(24));
+        document.getElementById('export-options').addEventListener('click', () => showExportOptions());
+        document.getElementById('refresh-dashboard').addEventListener('click', loadDashboard);
+        
+        // Export modal
+        document.getElementById('close-export-modal').addEventListener('click', () => hideExportModal());
+        document.getElementById('cancel-export').addEventListener('click', () => hideExportModal());
+        document.getElementById('confirm-export').addEventListener('click', () => handleExportSelection());
+        
+        // Export option checkboxes
+        document.getElementById('export-transactions').addEventListener('change', handleExportOptionChange);
+        document.getElementById('export-inventory').addEventListener('change', handleExportOptionChange);
+        document.getElementById('export-both').addEventListener('change', handleExportOptionChange);
+        
+        // File handling
+        document.getElementById('file').addEventListener('change', handleFileSelect);
+        document.getElementById('confirm-import').addEventListener('click', confirmImport);
+        document.getElementById('cancel-import').addEventListener('click', cancelImport);
+        
+        // Refresh buttons
+        document.getElementById('refresh-transactions').addEventListener('click', loadTransactions);
+        document.getElementById('refresh-inventory').addEventListener('click', loadInventory);
+        document.getElementById('refresh-imports').addEventListener('click', loadImportHistory);
+        document.getElementById('refresh-exports').addEventListener('click', loadExportHistory);
+        
+        // Drag and drop
+        setupDragAndDrop();
       }
 
-      function computeDueDate(dateStr, terms) {
-        if (!dateStr) return '';
-        const parts = dateStr.split('/');
-        if (parts.length !== 3) return dateStr;
-        const month = parseInt(parts[0], 10) - 1;
-        const day = parseInt(parts[1], 10);
-        const year = parseInt(parts[2], 10);
-        const base = new Date(year, month, day);
-        const t = String(terms || '').toLowerCase();
-        const netMatch = t.match(/^net\s+(\d{1,3})/);
-        if (netMatch) {
-          const add = parseInt(netMatch[1], 10) || 0;
-          const due = new Date(base.getTime());
-          due.setDate(due.getDate() + add);
-          return formatDateMMDDYYYY(due);
+      function showTab(tabName) {
+        // Hide all content
+        document.querySelectorAll('.card[id$="-content"]').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+        
+        // Show selected tab
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+        document.getElementById(`${tabName}-content`).classList.remove('hidden');
+        
+        // Load data for tab
+        switch(tabName) {
+          case 'dashboard':
+            loadDashboard();
+            break;
+          case 'transactions':
+            loadTransactions();
+            break;
+          case 'inventory':
+            loadInventory();
+            break;
+          case 'imports':
+            loadImportHistory();
+            break;
+          case 'exports':
+            loadExportHistory();
+            break;
         }
-        return dateStr; // Due upon receipt or unknown → same as date
       }
 
-      function render() {
-        const count = state.bills.length;
-        document.getElementById('export').disabled = count === 0;
-        document.getElementById('dz').textContent = count ? 'Drop a CSV to replace current preview' : 'Drag & drop CSV here';
-        renderGallery();
-        renderList();
-      }
-
-      function renderGallery() {
-        const g = document.getElementById('gallery');
-        const header = document.getElementById('gallery-header');
-        const termsEditor = document.getElementById('terms-editor');
-        const lines = document.getElementById('gallery-lines');
-        if (!state.bills.length) {
-          header.textContent = 'No bills loaded';
-          termsEditor.textContent = '';
-          lines.textContent = '';
-          document.getElementById('pos').textContent = '';
-          return;
+      async function loadDashboard() {
+        try {
+          const stats = await window.api.getDashboardStats();
+          if (stats.error) {
+            console.error('Error loading dashboard stats:', stats.error);
+            return;
+          }
+          
+          state.dashboardStats = stats;
+          
+          // Update stats display
+          document.getElementById('total-transactions').textContent = stats.totalTransactions || 0;
+          document.getElementById('total-inventory').textContent = stats.totalInventoryItems || 0;
+          document.getElementById('total-value').textContent = `$${(stats.totalInventoryValue || 0).toFixed(2)}`;
+          document.getElementById('recent-transactions').textContent = stats.recentTransactions || 0;
+          
+          // Load recent activity
+          await loadRecentActivity();
+        } catch (err) {
+          console.error('Error loading dashboard:', err);
         }
-        if (state.idx < 0) state.idx = 0;
-        if (state.idx > state.bills.length - 1) state.idx = state.bills.length - 1;
-        const b = state.bills[state.idx];
-        header.innerHTML = `<h3>${b.vendor} — ${b.ref_num}</h3><div class="muted">Date: ${b.date} • Terms: ${b.terms} • Total: $${Number(b.total_amount).toFixed(2)}</div>`;
+      }
 
-        // Terms editor (per-bill with apply-to-all)
-        const isCustom = !TERMS_OPTIONS.includes(b.terms || '');
-        const optionsHtml = TERMS_OPTIONS.map(opt => `<option value="${opt}">${opt}</option>`).join('') + `<option value="__custom__">Custom…</option>`;
-        const selectedValue = isCustom ? '__custom__' : (b.terms || 'Due upon receipt');
-        termsEditor.innerHTML = `
-          <div class="row" style="gap:8px; align-items:center; margin:8px 0;">
-            <label class="muted">Payment terms</label>
-            <select id="bill-terms" style="padding:6px 8px; border:1px solid #e5e7eb; border-radius:8px;">${optionsHtml}</select>
-            <input id="bill-terms-custom" type="text" placeholder="Enter custom terms" style="padding:6px 8px; border:1px solid #e5e7eb; border-radius:8px; min-width:220px; ${isCustom ? '' : 'display:none;'}" value="${isCustom ? (b.terms || '') : ''}" />
-            <button id="apply-terms-all" class="btn secondary">Apply to all</button>
+      async function loadRecentActivity() {
+        try {
+          const recent = await window.api.getRecentTransactions(24);
+          if (recent.error) {
+            document.getElementById('recent-activity').innerHTML = `<div class="muted">Error loading recent activity: ${recent.error}</div>`;
+            return;
+          }
+          
+          if (!recent.length) {
+            document.getElementById('recent-activity').innerHTML = '<div class="muted">No recent activity</div>';
+            return;
+          }
+          
+          const activityHtml = recent.map(t => `
+            <div style="padding: 12px 0; border-bottom: 1px solid #f3f4f6;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <strong>${t.vendor}</strong> - ${t.ref_number}
+                  <div class="muted">${t.transaction_date} • ${t.items || 'No items'}</div>
+                </div>
+                <div style="font-weight: 600; color: #059669;">
+                  $${Number(t.total_amount).toFixed(2)}
+                </div>
+              </div>
+            </div>
+          `).join('');
+          
+          document.getElementById('recent-activity').innerHTML = activityHtml;
+        } catch (err) {
+          console.error('Error loading recent activity:', err);
+        }
+      }
+
+      async function handleFileSelect(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        try {
+          const text = await file.text();
+          const result = await window.api.dropCsv(text, file.name);
+          
+          if (result.error) {
+            if (result.isDuplicate) {
+              showDuplicateWarning(result.error, result.importId);
+            } else {
+              alert('Error processing file: ' + result.error);
+            }
+            return;
+          }
+          
+          state.currentImportId = result.importId;
+          state.currentBills = result.bills;
+          showImportPreview(result.bills);
+          
+        } catch (err) {
+          alert('Error reading file: ' + err.message);
+        }
+        
+        // Reset file input
+        e.target.value = '';
+      }
+
+      function showImportPreview(bills) {
+        const preview = document.getElementById('import-preview');
+        const content = document.getElementById('preview-content');
+        
+        const summary = bills.reduce((acc, bill) => {
+          acc.totalAmount += bill.total_amount;
+          acc.totalItems += bill.lines.length;
+          return acc;
+        }, { totalAmount: 0, totalItems: 0 });
+        
+        content.innerHTML = `
+          <div style="margin-bottom: 16px;">
+            <strong>Found ${bills.length} transactions with ${summary.totalItems} line items</strong><br>
+            <span class="muted">Total value: $${summary.totalAmount.toFixed(2)}</span>
+          </div>
+          <div style="max-height: 300px; overflow-y: auto;">
+            ${bills.map((bill, i) => `
+              <div style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                <div><strong>${i + 1}. ${bill.vendor}</strong> - ${bill.ref_num}</div>
+                <div class="muted">${bill.date} • $${bill.total_amount.toFixed(2)}</div>
+                <div style="font-size: 0.875rem; margin-top: 4px;">
+                  ${bill.lines.map(l => `${l.item} x${l.quantity}`).join(', ')}
+                </div>
+              </div>
+            `).join('')}
           </div>
         `;
-        const selectEl = document.getElementById('bill-terms');
-        const customEl = document.getElementById('bill-terms-custom');
-        selectEl.value = selectedValue;
-        selectEl.addEventListener('change', () => {
-          const val = selectEl.value;
-          if (val === '__custom__') {
-            customEl.style.display = '';
-            const newTerms = customEl.value || '';
-            state.bills[state.idx].terms = newTerms || 'Due upon receipt';
-            state.bills[state.idx].due_date = computeDueDate(state.bills[state.idx].date, state.bills[state.idx].terms);
-          } else {
-            customEl.style.display = 'none';
-            state.bills[state.idx].terms = val;
-            state.bills[state.idx].due_date = computeDueDate(state.bills[state.idx].date, val);
+        
+        preview.classList.remove('hidden');
+        hideMessages();
+      }
+
+      function showDuplicateWarning(message, importId) {
+        document.getElementById('duplicate-message').textContent = message;
+        document.getElementById('duplicate-warning').classList.remove('hidden');
+        hideImportPreview();
+        hideMessages();
+      }
+
+      function hideImportPreview() {
+        document.getElementById('import-preview').classList.add('hidden');
+      }
+
+      function hideMessages() {
+        document.getElementById('duplicate-warning').classList.add('hidden');
+        document.getElementById('success-message').classList.add('hidden');
+      }
+
+      async function confirmImport() {
+        if (!state.currentImportId || !state.currentBills.length) return;
+        
+        try {
+          const result = await window.api.processImport(state.currentImportId, state.currentBills);
+          
+          if (result.error) {
+            alert('Error processing import: ' + result.error);
+            return;
           }
-          renderGallery();
-        });
-        customEl.addEventListener('input', () => {
-          state.bills[state.idx].terms = customEl.value || 'Due upon receipt';
-          state.bills[state.idx].due_date = computeDueDate(state.bills[state.idx].date, state.bills[state.idx].terms);
-          renderGallery();
-        });
-        document.getElementById('apply-terms-all').addEventListener('click', () => {
-          const currentTerms = state.bills[state.idx].terms || 'Due upon receipt';
-          state.bills = state.bills.map(bill => ({
-            ...bill,
-            terms: currentTerms,
-            due_date: computeDueDate(bill.date, currentTerms),
+          
+          // Show success message
+          document.getElementById('success-details').textContent = 
+            `Successfully imported ${state.currentBills.length} transactions`;
+          document.getElementById('success-message').classList.remove('hidden');
+          
+          // Hide preview and reset state
+          hideImportPreview();
+          state.currentImportId = null;
+          state.currentBills = [];
+          
+          // Refresh dashboard
+          await loadDashboard();
+          
+        } catch (err) {
+          alert('Error confirming import: ' + err.message);
+        }
+      }
+
+      function cancelImport() {
+        hideImportPreview();
+        hideMessages();
+        state.currentImportId = null;
+        state.currentBills = [];
+      }
+
+      async function exportRecentData(hours) {
+        try {
+          const transactions = await window.api.getRecentTransactions(hours);
+          if (transactions.error) {
+            alert('Error loading recent transactions: ' + transactions.error);
+            return;
+          }
+          
+          if (!transactions.length) {
+            alert('No transactions found in the last ' + hours + ' hours');
+            return;
+          }
+          
+          // Convert to bills format for export
+          const bills = transactions.map(t => ({
+            vendor: t.vendor,
+            ref_num: t.ref_number,
+            date: t.transaction_date,
+            total_amount: t.total_amount,
+            terms: t.payment_terms || 'Due upon receipt',
+            due_date: t.due_date || t.transaction_date,
+            lines: [] // We'll need to load line items separately
           }));
-          render();
+          
+          await window.api.exportIif(bills, `recent_${hours}h_export.iif`);
+          
+        } catch (err) {
+          alert('Error exporting recent data: ' + err.message);
+        }
+      }
+
+      function showExportOptions() {
+        document.getElementById('export-modal').classList.remove('hidden');
+        // Reset checkboxes
+        document.getElementById('export-transactions').checked = true;
+        document.getElementById('export-inventory').checked = false;
+        document.getElementById('export-both').checked = false;
+      }
+      
+      function hideExportModal() {
+        document.getElementById('export-modal').classList.add('hidden');
+      }
+      
+      function handleExportOptionChange() {
+        const transactions = document.getElementById('export-transactions').checked;
+        const inventory = document.getElementById('export-inventory').checked;
+        const both = document.getElementById('export-both').checked;
+        
+        // If "both" is selected, check both individual options
+        if (both) {
+          document.getElementById('export-transactions').checked = true;
+          document.getElementById('export-inventory').checked = true;
+        }
+        
+        // If both individual options are checked, check "both"
+        if (transactions && inventory) {
+          document.getElementById('export-both').checked = true;
+        }
+        
+        // If neither individual option is checked, uncheck "both"
+        if (!transactions && !inventory) {
+          document.getElementById('export-both').checked = false;
+        }
+      }
+      
+      async function handleExportSelection() {
+        const exportTransactions = document.getElementById('export-transactions').checked;
+        const exportInventory = document.getElementById('export-inventory').checked;
+        
+        if (!exportTransactions && !exportInventory) {
+          alert('Please select at least one export option');
+          return;
+        }
+        
+        hideExportModal();
+        
+        try {
+          if (exportTransactions) {
+            await exportTransactionsData();
+          }
+          
+          if (exportInventory) {
+            await exportInventoryData();
+          }
+          
+          alert('Export completed successfully!');
+        } catch (err) {
+          alert('Error during export: ' + err.message);
+        }
+      }
+      
+      async function exportTransactionsData() {
+        try {
+          const transactions = await window.api.getAllTransactions();
+          if (transactions.error) {
+            throw new Error('Error loading transactions: ' + transactions.error);
+          }
+          
+          if (!transactions.length) {
+            throw new Error('No transactions found to export');
+          }
+          
+          // Convert to bills format for export
+          const bills = transactions.map(t => ({
+            vendor: t.vendor,
+            ref_num: t.ref_number,
+            date: t.transaction_date,
+            total_amount: t.total_amount,
+            terms: t.payment_terms || 'Due upon receipt',
+            due_date: t.due_date || t.transaction_date,
+            lines: [] // We'll need to load line items separately
+          }));
+          
+          await window.api.exportIif(bills, `transactions_export_${new Date().toISOString().split('T')[0]}.iif`);
+          
+        } catch (err) {
+          throw new Error('Error exporting transactions: ' + err.message);
+        }
+      }
+      
+      async function exportInventoryData() {
+        try {
+          const inventory = await window.api.getInventoryForExport();
+          if (inventory.error) {
+            throw new Error('Error loading inventory: ' + inventory.error);
+          }
+          
+          if (!inventory.length) {
+            throw new Error('No inventory items found to export');
+          }
+          
+          // Create CSV content for inventory
+          const csvContent = [
+            'Item Name,Description,Current Quantity,Total Received,Total Cost,Average Unit Cost,Last Transaction Date,Last Vendor,Vendors,Transaction Dates,Transaction Count',
+            ...inventory.map(item => [
+              `"${item.item_name}"`,
+              `"${item.description || ''}"`,
+              item.current_quantity,
+              item.total_received,
+              item.total_cost,
+              item.average_unit_cost,
+              `"${item.last_transaction_date || ''}"`,
+              `"${item.last_vendor || ''}"`,
+              `"${item.vendors || ''}"`,
+              `"${item.transaction_dates || ''}"`,
+              item.transaction_count
+            ].join(','))
+          ].join('\n');
+          
+          // Create and download CSV file
+          const blob = new Blob([csvContent], { type: 'text/csv' });
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `inventory_export_${new Date().toISOString().split('T')[0]}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+          
+        } catch (err) {
+          throw new Error('Error exporting inventory: ' + err.message);
+        }
+      }
+      
+      async function exportAllData() {
+        try {
+          await exportTransactionsData();
+          await exportInventoryData();
+          alert('All data exported successfully!');
+        } catch (err) {
+          alert('Error exporting all data: ' + err.message);
+        }
+      }
+
+      async function loadTransactions() {
+        try {
+          const transactions = await window.api.getAllTransactions();
+          if (transactions.error) {
+            document.getElementById('transactions-table').innerHTML = `<div class="muted">Error: ${transactions.error}</div>`;
+            return;
+          }
+          
+          if (!transactions.length) {
+            document.getElementById('transactions-table').innerHTML = '<div class="muted">No transactions found</div>';
+            return;
+          }
+          
+          const table = `
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Vendor</th>
+                  <th>Ref #</th>
+                  <th>Amount</th>
+                  <th>Items</th>
+                  <th>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${transactions.map(t => `
+                  <tr>
+                    <td>${t.transaction_date}</td>
+                    <td><strong>${t.vendor}</strong></td>
+                    <td>${t.ref_number}</td>
+                    <td style="text-align: right; font-weight: 600;">$${Number(t.total_amount).toFixed(2)}</td>
+                    <td>${t.items || '-'}</td>
+                    <td class="muted">${new Date(t.created_at).toLocaleDateString()}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+          
+          document.getElementById('transactions-table').innerHTML = table;
+        } catch (err) {
+          document.getElementById('transactions-table').innerHTML = `<div class="muted">Error loading transactions: ${err.message}</div>`;
+        }
+      }
+
+      async function loadInventory() {
+        try {
+          const inventory = await window.api.getInventorySummary();
+          if (inventory.error) {
+            document.getElementById('inventory-table').innerHTML = `<div class="muted">Error: ${inventory.error}</div>`;
+            return;
+          }
+          
+          if (!inventory.length) {
+            document.getElementById('inventory-table').innerHTML = '<div class="muted">No inventory items found</div>';
+            return;
+          }
+          
+          const table = `
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Current Qty</th>
+                  <th>Total Received</th>
+                  <th>Total Cost</th>
+                  <th>Avg Unit Cost</th>
+                  <th>Last Vendor</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${inventory.map(item => `
+                  <tr>
+                    <td>
+                      <strong>${item.item_name}</strong><br>
+                      <span class="muted">${item.description || ''}</span>
+                    </td>
+                    <td style="text-align: center;">${item.current_quantity}</td>
+                    <td style="text-align: center;">${item.total_received}</td>
+                    <td style="text-align: right;">$${Number(item.total_cost).toFixed(2)}</td>
+                    <td style="text-align: right;">$${Number(item.average_unit_cost).toFixed(2)}</td>
+                    <td>${item.last_vendor || '-'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+          
+          document.getElementById('inventory-table').innerHTML = table;
+        } catch (err) {
+          document.getElementById('inventory-table').innerHTML = `<div class="muted">Error loading inventory: ${err.message}</div>`;
+        }
+      }
+
+      async function loadImportHistory() {
+        try {
+          const imports = await window.api.getImportHistory();
+          if (imports.error) {
+            document.getElementById('imports-table').innerHTML = `<div class="muted">Error: ${imports.error}</div>`;
+            return;
+          }
+          
+          if (!imports.length) {
+            document.getElementById('imports-table').innerHTML = '<div class="muted">No import history found</div>';
+            return;
+          }
+          
+          const table = `
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Filename</th>
+                  <th>Status</th>
+                  <th>Transactions</th>
+                  <th>Total Amount</th>
+                  <th>File Size</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${imports.map(imp => `
+                  <tr>
+                    <td>${new Date(imp.import_date).toLocaleDateString()}</td>
+                    <td><strong>${imp.filename}</strong></td>
+                    <td>
+                      <span style="color: ${imp.processed ? '#059669' : '#f59e0b'}; font-weight: 600;">
+                        ${imp.processed ? '✓ Processed' : '⏳ Pending'}
+                      </span>
+                    </td>
+                    <td style="text-align: center;">${imp.transaction_count || 0}</td>
+                    <td style="text-align: right;">$${(imp.total_amount || 0).toFixed(2)}</td>
+                    <td class="muted">${(imp.file_size / 1024).toFixed(1)} KB</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+          
+          document.getElementById('imports-table').innerHTML = table;
+        } catch (err) {
+          document.getElementById('imports-table').innerHTML = `<div class="muted">Error loading import history: ${err.message}</div>`;
+        }
+      }
+
+      async function loadExportHistory() {
+        try {
+          const exports = await window.api.getExportHistory();
+          if (exports.error) {
+            document.getElementById('exports-table').innerHTML = `<div class="muted">Error: ${exports.error}</div>`;
+            return;
+          }
+          
+          if (!exports.length) {
+            document.getElementById('exports-table').innerHTML = '<div class="muted">No export history found</div>';
+            return;
+          }
+          
+          const table = `
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Filename</th>
+                  <th>Transactions</th>
+                  <th>Total Amount</th>
+                  <th>File Path</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${exports.map(exp => `
+                  <tr>
+                    <td>${new Date(exp.export_date).toLocaleDateString()}</td>
+                    <td><strong>${exp.filename}</strong></td>
+                    <td style="text-align: center;">${exp.transaction_count}</td>
+                    <td style="text-align: right;">$${Number(exp.total_amount).toFixed(2)}</td>
+                    <td class="muted" style="font-family: monospace; font-size: 12px;">${exp.file_path}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+          
+          document.getElementById('exports-table').innerHTML = table;
+        } catch (err) {
+          document.getElementById('exports-table').innerHTML = `<div class="muted">Error loading export history: ${err.message}</div>`;
+        }
+      }
+
+      function setupDragAndDrop() {
+        const dz = document.getElementById('dz');
+        
+        dz.addEventListener('dragover', (e) => { 
+          e.preventDefault(); 
+          dz.classList.add('dragover');
         });
-        lines.innerHTML = b.lines.map(l => `
-          <div style="padding:8px 0;border-bottom:1px solid #f3f4f6;">
-            <div><strong>Item</strong>: <code>${l.item}</code> &nbsp; | &nbsp; <strong>Qty</strong>: ${l.quantity} &nbsp; | &nbsp; <strong>Price</strong>: $${Number(l.unit_cost).toFixed(2)}</div>
-            ${l.description ? `<div class="muted">${l.description}</div>` : ''}
-          </div>
-        `).join('');
-        document.getElementById('pos').textContent = `${state.idx + 1} / ${state.bills.length}`;
+        
+        dz.addEventListener('dragleave', () => { 
+          dz.classList.remove('dragover');
+        });
+        
+        dz.addEventListener('drop', async (e) => {
+          e.preventDefault(); 
+          dz.classList.remove('dragover');
+          
+          const file = e.dataTransfer.files[0];
+          if (!file) return;
+          
+          try {
+            const text = await file.text();
+            const result = await window.api.dropCsv(text, file.name);
+            
+            if (result.error) {
+              if (result.isDuplicate) {
+                showDuplicateWarning(result.error, result.importId);
+              } else {
+                alert('Error processing file: ' + result.error);
+              }
+              return;
+            }
+            
+            state.currentImportId = result.importId;
+            state.currentBills = result.bills;
+            showImportPreview(result.bills);
+            
+          } catch (err) {
+            alert('Error reading file: ' + err.message);
+          }
+        });
+        
+        // Prevent default browser behavior on global drag/drop
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', (e) => e.preventDefault());
       }
-
-      function renderList() {
-        const root = document.getElementById('list');
-        if (!state.bills.length) { root.textContent = 'No bills loaded'; return; }
-        root.innerHTML = state.bills.map((b, i) => `
-          <details ${i===0?'open':''}>
-            <summary><strong>${i+1}. ${b.vendor} — ${b.ref_num}</strong> &nbsp; • &nbsp; $${Number(b.total_amount).toFixed(2)} &nbsp; • &nbsp; ${b.date} &nbsp; • &nbsp; <span class="muted">${b.terms}</span></summary>
-            <div class="list">
-              <ul>
-                ${b.lines.map(l => `<li><code>${l.item}</code> x${l.quantity} @ $${Number(l.unit_cost).toFixed(2)} ${l.description ? `<span class="muted">— ${l.description}</span>` : ''}</li>`).join('')}
-              </ul>
-            </div>
-          </details>
-        `).join('');
-      }
-
-      // File open
-      document.getElementById('pick').addEventListener('click', async () => {
-        if (window.api && window.api.pickFile) {
-          const res = await window.api.pickFile();
-          if (res && res.error) { alert(res.error); return; }
-          if (res && res.bills) { state.bills = res.bills; state.idx = 0; render(); }
-        } else {
-          document.getElementById('file').click();
-        }
-      });
-      document.getElementById('file').addEventListener('change', async (e) => {
-        const f = e.target.files && e.target.files[0];
-        if (!f) return;
-        const text = await f.text();
-        if (window.api && window.api.dropCsv) {
-          const res = await window.api.dropCsv(text);
-          if (res && res.error) { alert(res.error); return; }
-          if (res && res.bills) { state.bills = res.bills; state.idx = 0; render(); }
-        } else {
-          alert('Unable to process file (IPC unavailable). Please close and reopen the app.');
-        }
-      });
-      // Export
-      document.getElementById('export').addEventListener('click', async () => {
-        if (!state.bills.length) return;
-        await window.api.exportIif(state.bills, 'bills_output.iif');
-      });
-      // Tabs
-      document.getElementById('tab-gallery').addEventListener('click', () => {
-        document.getElementById('tab-gallery').classList.add('active');
-        document.getElementById('tab-list').classList.remove('active');
-        document.getElementById('gallery').classList.remove('hidden');
-        document.getElementById('list').classList.add('hidden');
-      });
-      document.getElementById('tab-list').addEventListener('click', () => {
-        document.getElementById('tab-list').classList.add('active');
-        document.getElementById('tab-gallery').classList.remove('active');
-        document.getElementById('list').classList.remove('hidden');
-        document.getElementById('gallery').classList.add('hidden');
-      });
-      // Nav
-      document.getElementById('prev').addEventListener('click', () => { state.idx = Math.max(0, state.idx - 1); renderGallery(); });
-      document.getElementById('next').addEventListener('click', () => { state.idx = Math.min(state.bills.length - 1, state.idx + 1); renderGallery(); });
-      // DnD
-      const dz = document.getElementById('dz');
-      dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.style.background = '#f9fafb'; });
-      dz.addEventListener('dragleave', () => { dz.style.background = 'transparent'; });
-      dz.addEventListener('drop', async (e) => {
-        e.preventDefault(); dz.style.background = 'transparent';
-        const file = e.dataTransfer.files[0];
-        if (!file) return;
-        const text = await file.text();
-        const res = await window.api.dropCsv(text);
-        if (res && res.error) { alert(res.error); return; }
-        if (res && res.bills) { state.bills = res.bills; state.idx = 0; render(); }
-      });
-
-      // Prevent default browser behavior on global drag/drop
-      window.addEventListener('dragover', (e) => e.preventDefault());
-      window.addEventListener('drop', (e) => e.preventDefault());
-
-      render();
     </script>
   </body>
-  </html>
+</html>
 
 
