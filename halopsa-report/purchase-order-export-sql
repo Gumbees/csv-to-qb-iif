@@ -1,0 +1,42 @@
+SELECT TOP 100 PERCENT
+       soh.SHid                             AS [PO_ID],            /* audit only */
+       soh.SHPODate                         AS [Date],
+       ISNULL(sod.SDDesc, i.idesc)          AS [Item],             /* what appears on the PO */
+       i.IInternalReference                 AS [Description],      /* internal reference / SKU from item table */
+       i.idesc2                             AS [Item Desc 2],
+       i.idesc3                             AS [Item Desc 3],
+       sod.SDquantity                       AS [Qty],
+       sod.SDPrice                          AS [Cost],             /* cost per line from PO detail */
+       sod.SDquantity * sod.SDPrice         AS [Amount],
+       i.ICostPrice                         AS [Unit Cost],        /* from item table */
+       i.Ibaseprice                         AS [Sell Price],       /* from item table */
+       i.IIsRecurringItem                   AS [Recurring?],       /* 1=yes, 0=no */
+       i.IRecurringPrice                    AS [Recurring Price],
+
+       /* Sales Tax (from item.Itaxcode) */
+       T1.TaxCode                           AS [Sales Tax Code],
+       T1.TaxDescription                    AS [Sales Tax Description],
+       T1.TaxValue                          AS [Sales Tax Rate],
+
+       /* Purchase Tax (from item.ITaxCodeOther) */
+       T2.TaxCode                           AS [Purchase Tax Code],
+       T2.TaxDescription                    AS [Purchase Tax Description],
+       T2.TaxValue                          AS [Purchase Tax Rate],
+
+       g.GDesc                              AS [Item Group],
+       xt.TDesc                             AS [Asset Type],
+       c.cdesc                              AS [Vendor],           /* QB: NAME */
+       COALESCE(NULLIF(soh.SHPORef,''), CONCAT('PO-', soh.SHid)) AS [RefNumber] /* QB: DOCNUM */
+FROM   SUPPLIERORDERHEADER  AS soh
+JOIN   SUPPLIERORDERDETAIL  AS sod ON sod.SDSHid = soh.SHid
+LEFT   JOIN item            AS i   ON i.iid       = sod.SDItemid
+LEFT   JOIN COMPANY         AS c   ON c.Cnum      = soh.SHSupplierID
+LEFT   JOIN Generic         AS g   ON g.GGeneric  = i.Igeneric
+LEFT   JOIN XType           AS xt  ON xt.TTypeNum = i.Itypenum
+LEFT   JOIN Tax             AS T1  ON T1.TaxID    = i.Itaxcode
+LEFT   JOIN Tax             AS T2  ON T2.TaxID    = i.ITaxCodeOther
+WHERE
+  soh.SHSupplierID IS NOT NULL
+  AND sod.SDquantity = sod.SDQtyReceived /* Only fully received POs (closed) */
+ORDER BY soh.SHid, sod.SDid
+/* Field names match original structure, enhanced with tax, group, and asset info */

@@ -29,6 +29,17 @@ htmlcov/
 .coverage*
 coverage.xml
 
+# Node.js/Electron
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+out/
+app/
+release/
+
 # Editors/IDE
 .vscode/
 .idea/

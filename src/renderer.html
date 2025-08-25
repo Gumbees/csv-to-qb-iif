@@ -1,0 +1,248 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';" />
+    <title>CSV ➜ QuickBooks Bills (IIF)</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; }
+      header { padding: 16px 24px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+      .btn { border: 1px solid #111827; background: #111827; color: #fff; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+      .btn.secondary { background: #fff; color: #111827; }
+      .container { padding: 16px 24px; }
+      .dropzone { border: 2px dashed #9ca3af; border-radius: 12px; padding: 24px; text-align: center; color: #6b7280; }
+      .tabs { display: flex; gap: 8px; margin-top: 16px; }
+      .tab { padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 9999px; cursor: pointer; }
+      .tab.active { background: #111827; color: #fff; border-color: #111827; }
+      .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-top: 16px; }
+      .row { display: flex; gap: 12px; align-items: center; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .muted { color: #6b7280; }
+      .list ul { margin: 0; padding-left: 20px; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div><strong>CSV ➜ QuickBooks Bills (IIF)</strong></div>
+      <div class="row">
+        <button id="pick" class="btn">Open CSV</button>
+        <button id="export" class="btn secondary">Export IIF</button>
+      </div>
+    </header>
+    <div class="container">
+      <input id="file" type="file" accept=".csv" class="hidden" />
+      <div id="dz" class="dropzone">Drag & drop CSV here</div>
+      <div class="tabs">
+        <div id="tab-gallery" class="tab active">Gallery</div>
+        <div id="tab-list" class="tab">List</div>
+      </div>
+      <div id="gallery" class="card">
+        <div id="gallery-header"></div>
+        <div id="terms-editor"></div>
+        <div id="gallery-lines"></div>
+        <div class="row" style="justify-content: space-between; margin-top: 12px;">
+          <button id="prev" class="btn secondary">Prev</button>
+          <div id="pos" class="muted"></div>
+          <button id="next" class="btn secondary">Next</button>
+        </div>
+      </div>
+      <div id="list" class="card hidden"></div>
+    </div>
+    <script>
+      const state = { bills: [], idx: 0 };
+      const TERMS_OPTIONS = [
+        'Due upon receipt',
+        'Net 7',
+        'Net 15',
+        'Net 30',
+        'Net 45',
+        'Net 60',
+        'Net 90',
+      ];
+
+      function formatDateMMDDYYYY(d) {
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${mm}/${dd}/${yyyy}`;
+      }
+
+      function computeDueDate(dateStr, terms) {
+        if (!dateStr) return '';
+        const parts = dateStr.split('/');
+        if (parts.length !== 3) return dateStr;
+        const month = parseInt(parts[0], 10) - 1;
+        const day = parseInt(parts[1], 10);
+        const year = parseInt(parts[2], 10);
+        const base = new Date(year, month, day);
+        const t = String(terms || '').toLowerCase();
+        const netMatch = t.match(/^net\s+(\d{1,3})/);
+        if (netMatch) {
+          const add = parseInt(netMatch[1], 10) || 0;
+          const due = new Date(base.getTime());
+          due.setDate(due.getDate() + add);
+          return formatDateMMDDYYYY(due);
+        }
+        return dateStr; // Due upon receipt or unknown → same as date
+      }
+
+      function render() {
+        const count = state.bills.length;
+        document.getElementById('export').disabled = count === 0;
+        document.getElementById('dz').textContent = count ? 'Drop a CSV to replace current preview' : 'Drag & drop CSV here';
+        renderGallery();
+        renderList();
+      }
+
+      function renderGallery() {
+        const g = document.getElementById('gallery');
+        const header = document.getElementById('gallery-header');
+        const termsEditor = document.getElementById('terms-editor');
+        const lines = document.getElementById('gallery-lines');
+        if (!state.bills.length) {
+          header.textContent = 'No bills loaded';
+          termsEditor.textContent = '';
+          lines.textContent = '';
+          document.getElementById('pos').textContent = '';
+          return;
+        }
+        if (state.idx < 0) state.idx = 0;
+        if (state.idx > state.bills.length - 1) state.idx = state.bills.length - 1;
+        const b = state.bills[state.idx];
+        header.innerHTML = `<h3>${b.vendor} — ${b.ref_num}</h3><div class="muted">Date: ${b.date} • Terms: ${b.terms} • Total: $${Number(b.total_amount).toFixed(2)}</div>`;
+
+        // Terms editor (per-bill with apply-to-all)
+        const isCustom = !TERMS_OPTIONS.includes(b.terms || '');
+        const optionsHtml = TERMS_OPTIONS.map(opt => `<option value="${opt}">${opt}</option>`).join('') + `<option value="__custom__">Custom…</option>`;
+        const selectedValue = isCustom ? '__custom__' : (b.terms || 'Due upon receipt');
+        termsEditor.innerHTML = `
+          <div class="row" style="gap:8px; align-items:center; margin:8px 0;">
+            <label class="muted">Payment terms</label>
+            <select id="bill-terms" style="padding:6px 8px; border:1px solid #e5e7eb; border-radius:8px;">${optionsHtml}</select>
+            <input id="bill-terms-custom" type="text" placeholder="Enter custom terms" style="padding:6px 8px; border:1px solid #e5e7eb; border-radius:8px; min-width:220px; ${isCustom ? '' : 'display:none;'}" value="${isCustom ? (b.terms || '') : ''}" />
+            <button id="apply-terms-all" class="btn secondary">Apply to all</button>
+          </div>
+        `;
+        const selectEl = document.getElementById('bill-terms');
+        const customEl = document.getElementById('bill-terms-custom');
+        selectEl.value = selectedValue;
+        selectEl.addEventListener('change', () => {
+          const val = selectEl.value;
+          if (val === '__custom__') {
+            customEl.style.display = '';
+            const newTerms = customEl.value || '';
+            state.bills[state.idx].terms = newTerms || 'Due upon receipt';
+            state.bills[state.idx].due_date = computeDueDate(state.bills[state.idx].date, state.bills[state.idx].terms);
+          } else {
+            customEl.style.display = 'none';
+            state.bills[state.idx].terms = val;
+            state.bills[state.idx].due_date = computeDueDate(state.bills[state.idx].date, val);
+          }
+          renderGallery();
+        });
+        customEl.addEventListener('input', () => {
+          state.bills[state.idx].terms = customEl.value || 'Due upon receipt';
+          state.bills[state.idx].due_date = computeDueDate(state.bills[state.idx].date, state.bills[state.idx].terms);
+          renderGallery();
+        });
+        document.getElementById('apply-terms-all').addEventListener('click', () => {
+          const currentTerms = state.bills[state.idx].terms || 'Due upon receipt';
+          state.bills = state.bills.map(bill => ({
+            ...bill,
+            terms: currentTerms,
+            due_date: computeDueDate(bill.date, currentTerms),
+          }));
+          render();
+        });
+        lines.innerHTML = b.lines.map(l => `
+          <div style="padding:8px 0;border-bottom:1px solid #f3f4f6;">
+            <div><strong>Item</strong>: <code>${l.item}</code> &nbsp; | &nbsp; <strong>Qty</strong>: ${l.quantity} &nbsp; | &nbsp; <strong>Price</strong>: $${Number(l.unit_cost).toFixed(2)}</div>
+            ${l.description ? `<div class="muted">${l.description}</div>` : ''}
+          </div>
+        `).join('');
+        document.getElementById('pos').textContent = `${state.idx + 1} / ${state.bills.length}`;
+      }
+
+      function renderList() {
+        const root = document.getElementById('list');
+        if (!state.bills.length) { root.textContent = 'No bills loaded'; return; }
+        root.innerHTML = state.bills.map((b, i) => `
+          <details ${i===0?'open':''}>
+            <summary><strong>${i+1}. ${b.vendor} — ${b.ref_num}</strong> &nbsp; • &nbsp; $${Number(b.total_amount).toFixed(2)} &nbsp; • &nbsp; ${b.date} &nbsp; • &nbsp; <span class="muted">${b.terms}</span></summary>
+            <div class="list">
+              <ul>
+                ${b.lines.map(l => `<li><code>${l.item}</code> x${l.quantity} @ $${Number(l.unit_cost).toFixed(2)} ${l.description ? `<span class="muted">— ${l.description}</span>` : ''}</li>`).join('')}
+              </ul>
+            </div>
+          </details>
+        `).join('');
+      }
+
+      // File open
+      document.getElementById('pick').addEventListener('click', async () => {
+        if (window.api && window.api.pickFile) {
+          const res = await window.api.pickFile();
+          if (res && res.error) { alert(res.error); return; }
+          if (res && res.bills) { state.bills = res.bills; state.idx = 0; render(); }
+        } else {
+          document.getElementById('file').click();
+        }
+      });
+      document.getElementById('file').addEventListener('change', async (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        const text = await f.text();
+        if (window.api && window.api.dropCsv) {
+          const res = await window.api.dropCsv(text);
+          if (res && res.error) { alert(res.error); return; }
+          if (res && res.bills) { state.bills = res.bills; state.idx = 0; render(); }
+        } else {
+          alert('Unable to process file (IPC unavailable). Please close and reopen the app.');
+        }
+      });
+      // Export
+      document.getElementById('export').addEventListener('click', async () => {
+        if (!state.bills.length) return;
+        await window.api.exportIif(state.bills, 'bills_output.iif');
+      });
+      // Tabs
+      document.getElementById('tab-gallery').addEventListener('click', () => {
+        document.getElementById('tab-gallery').classList.add('active');
+        document.getElementById('tab-list').classList.remove('active');
+        document.getElementById('gallery').classList.remove('hidden');
+        document.getElementById('list').classList.add('hidden');
+      });
+      document.getElementById('tab-list').addEventListener('click', () => {
+        document.getElementById('tab-list').classList.add('active');
+        document.getElementById('tab-gallery').classList.remove('active');
+        document.getElementById('list').classList.remove('hidden');
+        document.getElementById('gallery').classList.add('hidden');
+      });
+      // Nav
+      document.getElementById('prev').addEventListener('click', () => { state.idx = Math.max(0, state.idx - 1); renderGallery(); });
+      document.getElementById('next').addEventListener('click', () => { state.idx = Math.min(state.bills.length - 1, state.idx + 1); renderGallery(); });
+      // DnD
+      const dz = document.getElementById('dz');
+      dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.style.background = '#f9fafb'; });
+      dz.addEventListener('dragleave', () => { dz.style.background = 'transparent'; });
+      dz.addEventListener('drop', async (e) => {
+        e.preventDefault(); dz.style.background = 'transparent';
+        const file = e.dataTransfer.files[0];
+        if (!file) return;
+        const text = await file.text();
+        const res = await window.api.dropCsv(text);
+        if (res && res.error) { alert(res.error); return; }
+        if (res && res.bills) { state.bills = res.bills; state.idx = 0; render(); }
+      });
+
+      // Prevent default browser behavior on global drag/drop
+      window.addEventListener('dragover', (e) => e.preventDefault());
+      window.addEventListener('drop', (e) => e.preventDefault());
+
+      render();
+    </script>
+  </body>
+  </html>
+
+
