@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline';" />
     <title>CSV ➜ QuickBooks Bills (IIF) - Dashboard</title>
     <style>
       body { 
@@ -265,7 +265,7 @@
       <div><strong>CSV ➜ QuickBooks Bills (IIF) - Dashboard</strong></div>
       <div class="row">
         <button id="import-btn" class="btn success">Import CSV</button>
-        <button id="export-btn" class="btn secondary">Export IIF</button>
+        <button id="export-btn" class="btn secondary">Export Last 24h</button>
       </div>
     </header>
     
@@ -293,46 +293,9 @@
       <!-- Action Buttons -->
       <div class="action-buttons">
         <button id="export-24h" class="btn secondary">Export Last 24 Hours</button>
-        <button id="export-options" class="btn secondary">Export Options</button>
         <button id="refresh-dashboard" class="btn secondary">Refresh Dashboard</button>
       </div>
       
-      <!-- Export Options Modal -->
-      <div id="export-modal" class="modal hidden">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3>Export Options</h3>
-            <button id="close-export-modal" class="btn-close">&times;</button>
-          </div>
-          <div class="modal-body">
-            <div class="export-option">
-              <label>
-                <input type="checkbox" id="export-transactions" checked>
-                <strong>Transactions (Purchase Orders)</strong>
-                <div class="muted">Export all purchase order transactions as IIF format</div>
-              </label>
-            </div>
-            <div class="export-option">
-              <label>
-                <input type="checkbox" id="export-inventory">
-                <strong>Inventory Items</strong>
-                <div class="muted">Export inventory items as CSV with transaction history</div>
-              </label>
-            </div>
-            <div class="export-option">
-              <label>
-                <input type="checkbox" id="export-both">
-                <strong>Both</strong>
-                <div class="muted">Export transactions as IIF and inventory as CSV</div>
-              </label>
-            </div>
-            <div style="margin-top: 20px;">
-              <button id="confirm-export" class="btn success">Export Selected Data</button>
-              <button id="cancel-export" class="btn secondary">Cancel</button>
-            </div>
-          </div>
-        </div>
-      </div>
       
       <!-- Import Section -->
       <div class="card" id="import-section">
@@ -364,6 +327,11 @@
           <strong>✅ Import Successful!</strong>
           <div id="success-details"></div>
         </div>
+        
+        <div id="other-import-result" class="success-message hidden">
+          <strong id="other-import-title">✅ Import Completed</strong>
+          <div id="other-import-details"></div>
+        </div>
       </div>
       
       <!-- Data Tabs -->
@@ -373,6 +341,7 @@
         <div id="tab-inventory" class="tab">Inventory</div>
         <div id="tab-imports" class="tab">Import History</div>
         <div id="tab-exports" class="tab">Export History</div>
+        <div id="tab-ledger" class="tab">Ledger</div>
       </div>
       
       <!-- Dashboard Content -->
@@ -394,18 +363,43 @@
       <div id="inventory-content" class="card hidden">
         <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
           <h3>Inventory Summary</h3>
-          <button id="refresh-inventory" class="btn secondary">Refresh</button>
+          <div style="display:flex; gap:8px;">
+            <button id="refresh-inventory" class="btn secondary">Refresh</button>
+            <button id="qbd-config" class="btn secondary">QBD Account Config</button>
+          </div>
         </div>
         <div id="inventory-table"></div>
+        <div id="qbd-config-panel" class="card hidden" style="margin-top:16px;">
+          <h4>QuickBooks Desktop Accounts</h4>
+          <div class="muted" style="margin-bottom:8px;">Manage available account names and set defaults by role (inventory_asset, cogs, income, etc.).</div>
+          <div id="qbd-accounts-table"></div>
+          <div style="margin-top:12px;">
+            <h5>Add/Update Account</h5>
+            <div class="row" style="gap:8px; margin-bottom:8px;">
+              <input id="qbd-name" placeholder="Account Name" />
+              <input id="qbd-role" placeholder="Role (e.g., inventory_asset)" />
+              <input id="qbd-type" placeholder="Type (optional)" />
+              <label><input type="checkbox" id="qbd-active" checked /> Active</label>
+              <button id="qbd-save" class="btn success">Save</button>
+            </div>
+          </div>
+        </div>
       </div>
       
       <!-- Import History Content -->
       <div id="imports-content" class="card hidden">
         <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
           <h3>Import History</h3>
-          <button id="refresh-imports" class="btn secondary">Refresh</button>
+          <div style="display:flex; gap:8px;">
+            <button id="refresh-imports" class="btn secondary">Refresh</button>
+            <button id="view-imports-metadata" class="btn secondary">View Raw Imports</button>
+          </div>
         </div>
         <div id="imports-table"></div>
+        <div id="imports-metadata" class="card hidden" style="margin-top:16px;">
+          <h4>Raw Import Metadata</h4>
+          <div id="imports-metadata-table"></div>
+        </div>
       </div>
       
       <!-- Export History Content -->
@@ -416,13 +410,100 @@
         </div>
         <div id="exports-table"></div>
       </div>
+      
+      <div id="ledger-content" class="card hidden">
+        <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
+          <h3>Ledger (Recent)</h3>
+          <button id="refresh-ledger" class="btn secondary">Refresh</button>
+        </div>
+        <div id="ledger-table"></div>
+      </div>
     </div>
     
     <script>
+      // API wrapper for the web app (replaces Electron's window.api)
+      const apiBase = '';
+      async function jsonFetch(url, options = {}) {
+        const res = await fetch(apiBase + url, {
+          headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+          credentials: 'same-origin',
+          ...options
+        });
+        const ct = res.headers.get('content-type') || '';
+        if (!res.ok) {
+          let msg = res.statusText;
+          if (ct.includes('application/json')) {
+            const data = await res.json().catch(() => null);
+            if (data && data.error) msg = data.error;
+          } else {
+            const text = await res.text().catch(() => '');
+            if (text) msg = text;
+          }
+          throw new Error(msg || `HTTP ${res.status}`);
+        }
+        return ct.includes('application/json') ? res.json() : res.text();
+      }
+      function downloadBlob(blob, filename) {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }
+      function humanizeType(t){
+        const map={ po_bills:'Purchase Orders', halo_invoices:'Halo Invoices', bank_batch:'Bank Batch (FNBPA)', bank_generic:'Bank Transactions', stripe_csv:'Stripe CSV', unknown:'Unknown' };
+        return map[t]||t;
+      }
+
+      window.api = {
+        async dropCsv(content, filename) {
+          return jsonFetch('/api/drop-csv', {
+            method: 'POST',
+            body: JSON.stringify({ content, filename })
+          });
+        },
+        async processImport(importId, bills) {
+          return jsonFetch('/api/process-import', {
+            method: 'POST',
+            body: JSON.stringify({ importId, bills })
+          });
+        },
+        async exportIif(bills, suggestedName = 'bills_output.iif', transactionIds = []) {
+          const res = await fetch(apiBase + '/api/export-iif', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bills, suggestedName, transactionIds })
+          });
+          if (!res.ok) {
+            const txt = await res.text().catch(() => res.statusText);
+            throw new Error(txt || `HTTP ${res.status}`);
+          }
+          const blob = await res.blob();
+          downloadBlob(blob, suggestedName);
+          return { saved: true };
+        },
+        async getDashboardStats() { return jsonFetch('/api/dashboard-stats'); },
+        async getRecentTransactions(hours = 24) { return jsonFetch(`/api/recent-transactions?hours=${encodeURIComponent(hours)}`); },
+        async getAllTransactions() { return jsonFetch('/api/all-transactions'); },
+        async getInventorySummary() { return jsonFetch('/api/inventory-summary'); },
+        async getInventoryForExport() { return jsonFetch('/api/inventory-for-export'); },
+        async getImportHistory() { return jsonFetch('/api/import-history'); },
+        async getExportHistory() { return jsonFetch('/api/export-history'); },
+        async getItemTransactions(itemId) { return jsonFetch(`/api/item-transactions/${encodeURIComponent(itemId)}`); },
+        async getQbdAccounts() { return jsonFetch('/api/qbd/accounts'); },
+        async upsertQbdAccount(payload) { return jsonFetch('/api/qbd/accounts', { method: 'POST', body: JSON.stringify(payload) }); },
+        async setDefaultQbdAccount(role, accountId) { return jsonFetch('/api/qbd/accounts/default', { method: 'POST', body: JSON.stringify({ role, accountId }) }); }
+      };
+
       const state = { 
         currentImportId: null,
         currentBills: [],
-        dashboardStats: null
+        dashboardStats: null,
+        currentDetectedType: null,
+        lastImportMetaId: null
       };
 
       // Initialize dashboard
@@ -438,23 +519,13 @@
         document.getElementById('tab-inventory').addEventListener('click', () => showTab('inventory'));
         document.getElementById('tab-imports').addEventListener('click', () => showTab('imports'));
         document.getElementById('tab-exports').addEventListener('click', () => showTab('exports'));
+        document.getElementById('tab-ledger').addEventListener('click', () => showTab('ledger'));
         
         // Action buttons
         document.getElementById('import-btn').addEventListener('click', () => document.getElementById('file').click());
-        document.getElementById('export-btn').addEventListener('click', () => showExportOptions());
+        document.getElementById('export-btn').addEventListener('click', () => exportRecentData(24));
         document.getElementById('export-24h').addEventListener('click', () => exportRecentData(24));
-        document.getElementById('export-options').addEventListener('click', () => showExportOptions());
         document.getElementById('refresh-dashboard').addEventListener('click', loadDashboard);
-        
-        // Export modal
-        document.getElementById('close-export-modal').addEventListener('click', () => hideExportModal());
-        document.getElementById('cancel-export').addEventListener('click', () => hideExportModal());
-        document.getElementById('confirm-export').addEventListener('click', () => handleExportSelection());
-        
-        // Export option checkboxes
-        document.getElementById('export-transactions').addEventListener('change', handleExportOptionChange);
-        document.getElementById('export-inventory').addEventListener('change', handleExportOptionChange);
-        document.getElementById('export-both').addEventListener('change', handleExportOptionChange);
         
         // File handling
         document.getElementById('file').addEventListener('change', handleFileSelect);
@@ -466,6 +537,9 @@
         document.getElementById('refresh-inventory').addEventListener('click', loadInventory);
         document.getElementById('refresh-imports').addEventListener('click', loadImportHistory);
         document.getElementById('refresh-exports').addEventListener('click', loadExportHistory);
+        document.getElementById('refresh-ledger').addEventListener('click', loadLedger);
+        document.getElementById('qbd-config').addEventListener('click', toggleQbdConfig);
+        document.getElementById('view-imports-metadata').addEventListener('click', toggleImportsMetadata);
         
         // Drag and drop
         setupDragAndDrop();
@@ -496,6 +570,9 @@
             break;
           case 'exports':
             loadExportHistory();
+            break;
+          case 'ledger':
+            loadLedger();
             break;
         }
       }
@@ -568,14 +645,20 @@
             if (result.isDuplicate) {
               showDuplicateWarning(result.error, result.importId);
             } else {
-              alert('Error processing file: ' + result.error);
+              alert('Error processing file: ' + result.error + (result.detectedType?`\nDetected: ${result.detectedType}`:''));
             }
             return;
           }
           
-          state.currentImportId = result.importId;
-          state.currentBills = result.bills;
-          showImportPreview(result.bills);
+          state.currentDetectedType = result.detectedType || 'po_bills';
+          state.lastImportMetaId = result.import_meta_id || null;
+          if ((result.detectedType || 'po_bills') === 'po_bills') {
+            state.currentImportId = result.importId;
+            state.currentBills = result.bills;
+            showImportPreview(result.bills);
+          } else {
+            showOtherImportResult(result);
+          }
           
         } catch (err) {
           alert('Error reading file: ' + err.message);
@@ -597,6 +680,7 @@
         
         content.innerHTML = `
           <div style="margin-bottom: 16px;">
+            <strong>Detected: ${humanizeType(state.currentDetectedType || 'po_bills')}</strong><br>
             <strong>Found ${bills.length} transactions with ${summary.totalItems} line items</strong><br>
             <span class="muted">Total value: $${summary.totalAmount.toFixed(2)}</span>
           </div>
@@ -614,7 +698,36 @@
         `;
         
         preview.classList.remove('hidden');
+        document.getElementById('other-import-result').classList.add('hidden');
         hideMessages();
+      }
+
+      function showOtherImportResult(result) {
+        // Hide PO preview widgets
+        hideImportPreview();
+        hideMessages();
+        const box = document.getElementById('other-import-result');
+        const title = document.getElementById('other-import-title');
+        const details = document.getElementById('other-import-details');
+        const t = humanizeType(result.detectedType || 'unknown');
+        title.textContent = `✅ Imported ${t}`;
+        let html = '';
+        if (typeof result.imported === 'number') {
+          html += `<div><strong>Imported:</strong> ${result.imported} records</div>`;
+        }
+        if (result.import_meta_id) {
+          html += `<div class="muted">Import Ref: ${result.import_meta_id}</div>`;
+        }
+        if (result.isDuplicate) {
+          html += `<div class="muted">Duplicate detected; using existing import ref ${result.importId}</div>`;
+        }
+        if (t === 'Bank Transactions' || t === 'Bank Batch (FNBPA)') {
+          html += `<div>Data is available under the Ledger and will appear in Recent Activity.</div>`;
+        } else if (t === 'Halo Invoices') {
+          html += `<div>Invoices have been imported and linked to clients. View under Transactions or future Invoices tab.</div>`;
+        }
+        details.innerHTML = html || `<div class="muted">Completed.</div>`;
+        box.classList.remove('hidden');
       }
 
       function showDuplicateWarning(message, importId) {
@@ -682,7 +795,8 @@
             return;
           }
           
-          // Convert to bills format for export
+          // Convert to bills format for export and collect transaction IDs
+          const transactionIds = transactions.map(t => t.id);
           const bills = transactions.map(t => ({
             vendor: t.vendor,
             ref_num: t.ref_number,
@@ -690,10 +804,10 @@
             total_amount: t.total_amount,
             terms: t.payment_terms || 'Due upon receipt',
             due_date: t.due_date || t.transaction_date,
-            lines: [] // We'll need to load line items separately
+            lines: []
           }));
           
-          await window.api.exportIif(bills, `recent_${hours}h_export.iif`);
+          await window.api.exportIif(bills, `recent_${hours}h_export.iif`, transactionIds);
           
         } catch (err) {
           alert('Error exporting recent data: ' + err.message);
@@ -771,7 +885,8 @@
             throw new Error('No transactions found to export');
           }
           
-          // Convert to bills format for export
+          // Convert to bills format for export and collect transaction IDs
+          const transactionIds = transactions.map(t => t.id);
           const bills = transactions.map(t => ({
             vendor: t.vendor,
             ref_num: t.ref_number,
@@ -779,10 +894,10 @@
             total_amount: t.total_amount,
             terms: t.payment_terms || 'Due upon receipt',
             due_date: t.due_date || t.transaction_date,
-            lines: [] // We'll need to load line items separately
+            lines: []
           }));
           
-          await window.api.exportIif(bills, `transactions_export_${new Date().toISOString().split('T')[0]}.iif`);
+          await window.api.exportIif(bills, `transactions_export_${new Date().toISOString().split('T')[0]}.iif`, transactionIds);
           
         } catch (err) {
           throw new Error('Error exporting transactions: ' + err.message);
@@ -1060,14 +1175,20 @@
               if (result.isDuplicate) {
                 showDuplicateWarning(result.error, result.importId);
               } else {
-                alert('Error processing file: ' + result.error);
+                alert('Error processing file: ' + result.error + (result.detectedType?`\nDetected: ${result.detectedType}`:''));
               }
               return;
             }
             
-            state.currentImportId = result.importId;
-            state.currentBills = result.bills;
-            showImportPreview(result.bills);
+            state.currentDetectedType = result.detectedType || 'po_bills';
+            state.lastImportMetaId = result.import_meta_id || null;
+            if ((result.detectedType || 'po_bills') === 'po_bills') {
+              state.currentImportId = result.importId;
+              state.currentBills = result.bills;
+              showImportPreview(result.bills);
+            } else {
+              showOtherImportResult(result);
+            }
             
           } catch (err) {
             alert('Error reading file: ' + err.message);
@@ -1077,6 +1198,174 @@
         // Prevent default browser behavior on global drag/drop
         window.addEventListener('dragover', (e) => e.preventDefault());
         window.addEventListener('drop', (e) => e.preventDefault());
+      }
+      async function loadLedger() {
+        try {
+          const rows = await jsonFetch('/api/ledger?limit=200');
+          if (!rows.length) {
+            document.getElementById('ledger-table').innerHTML = '<div class="muted">No ledger entries found</div>';
+            return;
+          }
+          const table = `
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Source</th>
+                  <th>Description</th>
+                  <th>Counterparty</th>
+                  <th>Status</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map(r => `
+                  <tr>
+                    <td>${r.txn_date ? new Date(r.txn_date).toLocaleDateString() : ''}</td>
+                    <td>${r.txn_type}</td>
+                    <td>${r.source_name || '-'}</td>
+                    <td>${r.description || '-'}</td>
+                    <td>${r.counterparty || '-'}</td>
+                    <td>${r.status || '-'}</td>
+                    <td style=\"text-align:right;\">$${Number(r.amount || 0).toFixed(2)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+          document.getElementById('ledger-table').innerHTML = table;
+        } catch (err) {
+          document.getElementById('ledger-table').innerHTML = `<div class="muted">Error loading ledger: ${err.message}</div>`;
+        }
+      }
+
+      async function toggleQbdConfig() {
+        const panel = document.getElementById('qbd-config-panel');
+        if (!panel) return;
+        if (!panel.classList.contains('hidden')) { panel.classList.add('hidden'); return; }
+        await renderQbdAccounts();
+        panel.classList.remove('hidden');
+      }
+
+      async function renderQbdAccounts() {
+        try {
+          const rows = await window.api.getQbdAccounts();
+          const html = `
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th>Type</th>
+                  <th>Default</th>
+                  <th>Active</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map(r => `
+                  <tr>
+                    <td>${r.name}</td>
+                    <td>${r.role || '-'}</td>
+                    <td>${r.account_type || '-'}</td>
+                    <td>${r.is_default ? '✓' : '-'}</td>
+                    <td>${r.active ? '✓' : '-'}</td>
+                    <td>
+                      ${r.role ? `<button class="btn secondary" onclick=\"setDefaultRole('${r.role}', ${r.id})\">Set Default</button>` : ''}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+          document.getElementById('qbd-accounts-table').innerHTML = html;
+
+          const saveBtn = document.getElementById('qbd-save');
+          if (saveBtn) {
+            saveBtn.onclick = async () => {
+              const name = document.getElementById('qbd-name').value.trim();
+              const role = document.getElementById('qbd-role').value.trim() || null;
+              const type = document.getElementById('qbd-type').value.trim() || null;
+              const active = document.getElementById('qbd-active').checked;
+              if (!name) { alert('Enter account name'); return; }
+              await window.api.upsertQbdAccount({ name, role, account_type: type, active });
+              await renderQbdAccounts();
+            };
+          }
+        } catch (err) {
+          document.getElementById('qbd-accounts-table').innerHTML = `<div class="muted">Error: ${err.message}</div>`;
+        }
+      }
+
+      window.setDefaultRole = async function(role, id) {
+        try {
+          await window.api.setDefaultQbdAccount(role, id);
+          await renderQbdAccounts();
+        } catch (err) {
+          alert('Error setting default: ' + err.message);
+        }
+      }
+
+      async function toggleImportsMetadata() {
+        const box = document.getElementById('imports-metadata');
+        if (!box) return;
+        if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+        try {
+          const data = await jsonFetch('/api/imports-metadata?limit=100');
+          if (!data.length) {
+            document.getElementById('imports-metadata-table').innerHTML = '<div class="muted">No raw imports found</div>';
+            box.classList.remove('hidden');
+            return;
+          }
+          const table = `
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Source</th>
+                  <th>Type</th>
+                  <th>File</th>
+                  <th>Rows</th>
+                  <th>Date</th>
+                  <th>View</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.map(m => `
+                  <tr>
+                    <td>${m.id}</td>
+                    <td>${m.source_name || '-'}</td>
+                    <td>${m.import_type}</td>
+                    <td>${m.original_filename || '-'}</td>
+                    <td>${m.row_count || 0}</td>
+                    <td>${new Date(m.created_at).toLocaleString()}</td>
+                    <td><button class=\"btn secondary\" onclick=\"viewImportRecords(${m.id})\">View Records</button></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+          document.getElementById('imports-metadata-table').innerHTML = table;
+          box.classList.remove('hidden');
+        } catch (err) {
+          document.getElementById('imports-metadata-table').innerHTML = `<div class="muted">Error: ${err.message}</div>`;
+          box.classList.remove('hidden');
+        }
+      }
+
+      window.viewImportRecords = async function(id) {
+        try {
+          const recs = await jsonFetch(`/api/imports-metadata/${id}/records?limit=100`);
+          const el = document.getElementById('imports-metadata-table');
+          const html = `
+            <div style="margin: 12px 0;">Showing first ${recs.length} records</div>
+            <pre style="white-space: pre-wrap; background: #f8fafc; padding: 12px; border-radius: 8px; max-height: 400px; overflow:auto;">${recs.map(r => JSON.stringify(r.raw, null, 2)).join('\n\n')}</pre>
+          `;
+          el.innerHTML = html;
+        } catch (err) {
+          document.getElementById('imports-metadata-table').innerHTML = `<div class="muted">Error loading records: ${err.message}</div>`;
+        }
       }
     </script>
   </body>
