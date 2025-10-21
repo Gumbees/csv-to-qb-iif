@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+  <style>
+    .modal {
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-content {
+      background-color: white;
+      padding: 20px;
+      border-radius: 12px;
+      width: 400px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .btn {
+      padding: 10px 16px;
+      margin: 5px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .btn.primary { background: #059669; color: white; }
+    .btn.secondary { background: #f3f4f6; color: #111; }
+  </style>
+</head>
+<body>
+  <h1>Modal Test</h1>
+  <button id="show-modal" class="btn primary">Show Export Modal</button>
+
+  <!-- Export Modal -->
+  <div id="export-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Export Options</h3>
+      <p>Modal should only show when clicking the button above.</p>
+      <button id="close-modal" class="btn secondary">Close</button>
+      <button id="cancel-modal" class="btn secondary">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    console.log('Script loaded');
+
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('DOM loaded');
+
+      // Ensure modal starts hidden
+      const modal = document.getElementById('export-modal');
+      console.log('Modal element:', modal);
+      console.log('Modal classes at start:', modal.className);
+
+      modal.classList.add('hidden');
+      console.log('Modal classes after adding hidden:', modal.className);
+
+      // Show modal button
+      document.getElementById('show-modal').addEventListener('click', () => {
+        console.log('Show modal clicked');
+        modal.classList.remove('hidden');
+        console.log('Modal classes after show:', modal.className);
+      });
+
+      // Close modal buttons
+      document.getElementById('close-modal').addEventListener('click', () => {
+        console.log('Close modal clicked');
+        modal.classList.add('hidden');
+        console.log('Modal classes after close:', modal.className);
+      });
+
+      document.getElementById('cancel-modal').addEventListener('click', () => {
+        console.log('Cancel modal clicked');
+        modal.classList.add('hidden');
+        console.log('Modal classes after cancel:', modal.className);
+      });
+
+      // ESC key
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          console.log('ESC pressed');
+          if (!modal.classList.contains('hidden')) {
+            modal.classList.add('hidden');
+            console.log('Modal hidden with ESC');
+          }
+        }
+      });
+
+      // Click outside
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          console.log('Clicked outside modal');
+          modal.classList.add('hidden');
+          console.log('Modal hidden by outside click');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
