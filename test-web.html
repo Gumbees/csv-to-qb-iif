@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickBooks Web Connector Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        .result { margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 3px; white-space: pre-wrap; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>QuickBooks Web Connector Integration Test</h1>
+    
+    <div class="test-section">
+        <h2>1. Health Check</h2>
+        <button onclick="testHealth()">Test Health Endpoint</button>
+        <div id="health-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Configuration API</h2>
+        <button onclick="testConfig()">Test Configuration</button>
+        <div id="config-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. System Status</h2>
+        <button onclick="testStatus()">Get System Status</button>
+        <div id="status-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. CSV File Detection</h2>
+        <input type="file" id="csv-file" accept=".csv">
+        <button onclick="testFileDetection()">Test File Detection</button>
+        <div id="file-result" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000';
+        
+        async function testHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/healthz`);
+                const data = await response.json();
+                showResult('health-result', data, response.ok);
+            } catch (error) {
+                showResult('health-result', { error: error.message }, false);
+            }
+        }
+
+        async function testConfig() {
+            try {
+                // Test getting system configuration
+                const response = await fetch(`${API_BASE}/api/config`);
+                const data = await response.json();
+                showResult('config-result', data, response.ok);
+            } catch (error) {
+                showResult('config-result', { error: error.message }, false);
+            }
+        }
+
+        async function testStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/system/status`);
+                const data = await response.json();
+                showResult('status-result', data, response.ok);
+            } catch (error) {
+                showResult('status-result', { error: error.message }, false);
+            }
+        }
+
+        async function testFileDetection() {
+            const fileInput = document.getElementById('csv-file');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showResult('file-result', { error: 'Please select a CSV file' }, false);
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await fetch(`${API_BASE}/api/pick-file`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                showResult('file-result', data, response.ok);
+            } catch (error) {
+                showResult('file-result', { error: error.message }, false);
+            }
+        }
+
+        function showResult(elementId, data, isSuccess) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.className = `result ${isSuccess ? 'success' : 'error'}`;
+        }
+    </script>
+</body>
+</html>

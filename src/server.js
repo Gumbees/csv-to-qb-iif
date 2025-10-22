@@ -266,8 +266,8 @@ app.post('/api/import/stripe/backfill', async (req, res) => {
 
 app.get('/healthz', async (req, res) => {
     try {
-        // Simple DB check
-        await db.getDashboardStats();
+        // Simple DB availability check
+        await db.ready;
         res.status(200).json({ status: 'ok' });
     } catch (e) {
         res.status(500).json({ status: 'error', message: e.message });
@@ -290,7 +290,7 @@ app.post('/api/pick-file', upload.single('file'), async (req, res) => {
         const filename = req.file.originalname || 'uploaded.csv';
         const rows = parse(content, { columns: true, skip_empty_lines: true, relax_column_count: true });
 
-        const detectedType = detectCsvType(rows, filename);
+        const detectedType = db.detectCsvType(rows, filename);
 
         if (detectedType === 'po_bills') {
             const metaId = await db.createImportMetadata('LocalCSV', 'po_bills', {
@@ -302,7 +302,7 @@ app.post('/api/pick-file', upload.single('file'), async (req, res) => {
 
             const importResult = await db.storeCsvImport(filename, content);
             if (importResult.isDuplicate) return res.json({ error: importResult.message, isDuplicate: true, importId: importResult.id, detectedType });
-            const bills = parseBillsFromCsv(content);
+            const bills = db.parseBillsFromCsv(content);
 
             return res.json({ bills, filePath: filename, importId: importResult.id, isDuplicate: false, import_meta_id: metaId, detectedType });
         }
