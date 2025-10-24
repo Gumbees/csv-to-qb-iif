@@ -1279,7 +1279,7 @@ app.get('/qbwc/config', async (req, res) => {
     }
 });
 
-// Configuration management endpoint
+// Configuration API endpoints
 app.post('/api/config', async (req, res) => {
     try {
         const configUpdates = req.body;
@@ -1295,31 +1295,6 @@ app.post('/api/config', async (req, res) => {
                 'INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
                 [key, value]
             );
-        }
-        
-        res.json({ 
-            success: true, 
-            message: 'Configuration updated successfully',
-            updates: configUpdates 
-        });
-    } catch (error) {
-        console.error('Error updating configuration:', error);
-        res.status(500).json({ error: 'Failed to update configuration' });
-    }
-});
-
-// Configuration API endpoints
-app.post('/api/config', async (req, res) => {
-    try {
-        const updates = req.body;
-        const configUpdates = {};
-        
-        for (const [key, value] of Object.entries(updates)) {
-            await db.run(
-                'INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
-                [key, value]
-            );
-            configUpdates[key] = value;
         }
         
         res.json({ 
