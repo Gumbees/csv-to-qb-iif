@@ -1,12 +1,12 @@
 ﻿const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
-const { parse } = require('csv-parse/sync');
 
 class DatabaseManager {
   constructor() {
     try {
-      const dataDir = path.join(process.env.PUBLIC || process.env.USERPROFILE || '.', 'Documents', 'csv-to-qb-iif');
+      // Use environment variable for db path or default to container path
+      const dataDir = process.env.DB_PATH || '/usr/src/app/data';
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
       }
@@ -51,22 +51,20 @@ class DatabaseManager {
         ')'
       );
 
-      // Create configuration table
       this.db.exec(
         'CREATE TABLE IF NOT EXISTS config (' +
           'key TEXT PRIMARY KEY,' +
           'value TEXT NOT NULL,' +
-          'type TEXT DEFAULT \"text\",' +
-          'category TEXT DEFAULT \"general\",' +
+          'type TEXT DEFAULT "text",' +
+          'category TEXT DEFAULT "general",' +
           'label TEXT,' +
           'description TEXT,' +
           'options TEXT,' +
-          'is_required BOOLEAN DEFAULT 0,' +
+          'is_required BOOLEAN DEFAULT FALSE,' +
           'updated_at DATETIME DEFAULT CURRENT_TIMESTAMP' +
         ')'
       );
 
-      // Create QBD accounts table
       this.db.exec(
         'CREATE TABLE IF NOT EXISTS qbd_accounts (' +
           'id INTEGER PRIMARY KEY AUTOINCREMENT,' +
@@ -78,188 +76,85 @@ class DatabaseManager {
         ')'
       );
 
-      this.initializeDefaultConfig();
+      // Insert default configuration
+      const defaultConfigs = [
+        ['auto_match_threshold', '0.8', 'number', 'general', 'Auto-match Threshold', 'Confidence threshold for automatic matching', null, 1],
+        ['duplicate_check_enabled', 'true', 'boolean', 'general', 'Duplicate Check', 'Enable duplicate transaction detection', null, 1],
+        ['quickbooks_sync_method', 'iif', 'select', 'quickbooks', 'Sync Method', 'Method for syncing with QuickBooks', '["iif","qbwc"]', 1],
+        ['quickbooks_default_account', 'Accounts Payable', 'text', 'quickbooks', 'Default Account', 'Default accounts payable account', null, 1],
+        ['accounting_currency', 'USD', 'text', 'accounting', 'Currency', 'Default accounting currency', null, 1],
+        ['accounting_timezone', 'UTC', 'text', 'accounting', 'Timezone', 'Accounting timezone', null, 1],
+        ['qbwc_username', 'qbwc_user', 'text', 'qbwc', 'QBWC Username', 'Username for QuickBooks Web Connector', null, 1],
+        ['qbwc_password', 'password123', 'password', 'qbwc', 'QBWC Password', 'Password for QuickBooks Web Connector', null, 1],
+        ['qbwc_app_name', 'CSV to QuickBooks IIF Sync', 'text', 'qbwc', 'QBWC App Name', 'Application name shown in QuickBooks', null, 1],
+        ['qbwc_sync_interval', '30', 'number', 'qbwc', 'Sync Interval (minutes)', 'How often QBWC should check for updates', null, 1]
+      ];
+
+      const stmt = this.db.prepare(`
+        INSERT OR IGNORE INTO config (key, value, type, category, label, description, options, is_required)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const config of defaultConfigs) {
+        stmt.run(config);
+      }
+
       console.log('Database initialized successfully');
+      return true;
     } catch (e) {
-      console.error('DB init error:', e);
+      console.error('Database initialization error:', e);
       throw e;
     }
   }
 
-  initializeDefaultConfig() {
-    const defaultConfigs = [
-      { key: 'auto_match_threshold', value: '0.8', type: 'number', category: 'general', label: 'Auto-match Threshold', description: 'Confidence threshold for automatic matching', is_required: 1 },
-      { key: 'duplicate_check_enabled', value: 'true', type: 'boolean', category: 'general', label: 'Duplicate Check', description: 'Enable duplicate transaction detection', is_required: 1 },
-      { key: 'quickbooks_sync_method', value: 'iif', type: 'select', category: 'quickbooks', label: 'Sync Method', description: 'Method for syncing with QuickBooks', options: '[\"iif\",\"qbwc\"]', is_required: 1 },
-      { key: 'quickbooks_default_account', value: 'Accounts Payable', type: 'text', category: 'quickbooks', label: 'Default Account', description: 'Default accounts payable account', is_required: 1 },
-      { key: 'accounting_currency', value: 'USD', type: 'text', category: 'accounting', label: 'Currency', description: 'Default accounting currency', is_required: 1 },
-      { key: 'accounting_timezone', value: 'UTC', type: 'text', category: 'accounting', label: 'Timezone', description: 'Accounting timezone', is_required: 1 }
-    ];
-
-    const insertStmt = this.db.prepare(
-      'INSERT OR IGNORE INTO config (key, value, type, category, label, description, options, is_required) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    );
-
-    for (const config of defaultConfigs) {
-      insertStmt.run(
-        config.key,
-        config.value,
-        config.type,
-        config.category,
-        config.label,
-        config.description,
-        config.options || null,
-        config.is_required ? 1 : 0
-      );
+  query(sql, params = []) {
+    try {
+      const stmt = this.db.prepare(sql);
+      return stmt.all(params);
+    } catch (e) {
+      console.error('Database query error:', e);
+      throw e;
     }
   }
 
-  // Configuration methods
-  async getConfig(category = null) {
-    let query = 'SELECT * FROM config';
-    const params = [];
-    
-    if (category) {
-      query += ' WHERE category = ?';
-      params.push(category);
-    }
-    
-    query += ' ORDER BY category, key';
-    
-    const stmt = this.db.prepare(query);
-    return stmt.all(...params);
+  get(sql, params = []) {
+    const stmt = this.db.prepare(sql);
+    return stmt.get(params) || null;
   }
 
-  async setConfig(key, value) {
-    const stmt = this.db.prepare('INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
-    return stmt.run(key, value);
+  all(sql, params = []) {
+    return this.query(sql, params);
   }
 
-  // Dashboard stats method for health check
-  async getDashboardStats() {
-    const importsStmt = this.db.prepare('SELECT COUNT(*) as count FROM csv_imports');
-    const transactionsStmt = this.db.prepare('SELECT COUNT(*) as count FROM transactions');
-    
-    const imports = importsStmt.get();
-    const transactions = transactionsStmt.get();
-    
-    return {
-      imports: imports.count,
-      transactions: transactions.count
-    };
+  run(sql, params = []) {
+    const stmt = this.db.prepare(sql);
+    return stmt.run(params);
   }
 
-  // QBD accounts management
-  async getQbdAccounts() {
-    return this.db.prepare('SELECT * FROM qbd_accounts ORDER BY name').all();
+  close() {
+    this.db.close();
   }
 
-  async upsertQbdAccount(accountData) {
-    const { id, name, account_type, quickbooks_id, last_sync } = accountData;
-    
-    if (id) {
-      const stmt = this.db.prepare(
-        'UPDATE qbd_accounts SET name = ?, account_type = ?, quickbooks_id = ?, last_sync = ? WHERE id = ?'
-      );
-      return stmt.run(name, account_type, quickbooks_id, last_sync, id);
-    } else {
-      const stmt = this.db.prepare(
-        'INSERT INTO qbd_accounts (name, account_type, quickbooks_id, last_sync) VALUES (?, ?, ?, ?)'
-      );
-      return stmt.run(name, account_type, quickbooks_id, last_sync);
-    }
-  }
-
-  // CSV import processing
-  async processCsvImport(importId, options = {}) {
-    // This would process a CSV import file and convert it to bills
-    return { success: true, processed: true, importId };
-  }
-
-  // CSV type detection
-  detectCsvType(rows, filename) {
-    if (!rows || !rows.length) return 'unknown';
-    
-    const headers = Object.keys(rows[0]);
-    const lowercaseHeaders = headers.map(h => h.toLowerCase());
-    
-    // Check for PO bills pattern
-    const poBillIndicators = ['vendor', 'date', 'refnumber', 'ref number', 'ponumber', 'po number', 'total', 'amount'];
-    const hasPoBillIndicators = poBillIndicators.some(indicator => 
-      lowercaseHeaders.includes(indicator.toLowerCase())
-    );
-    
-    if (hasPoBillIndicators) return 'po_bills';
-    
-    // Check for HaloPSA pattern
-    const haloIndicators = ['halo', 'invoice', 'client', 'status', 'totalamount'];
-    const hasHaloIndicators = haloIndicators.some(indicator => 
-      lowercaseHeaders.includes(indicator.toLowerCase()) ||
-      filename.toLowerCase().includes('halo')
-    );
-    
-    if (hasHaloIndicators) return 'halo_invoices';
-    
-    // Check for bank transactions
-    const bankIndicators = ['transaction', 'bank', 'account', 'debit', 'credit', 'balance'];
-    const hasBankIndicators = bankIndicators.some(indicator => 
-      lowercaseHeaders.includes(indicator.toLowerCase()) ||
-      filename.toLowerCase().includes('bank') ||
-      filename.toLowerCase().includes('fnb')
-    );
-    
-    if (hasBankIndicators) return 'bank_transactions';
-    
-    return 'unknown';
-  }
-
-  // Parse bills from CSV content
-  parseBillsFromCsv(content) {
-    const rows = parse(content, { columns: true, skip_empty_lines: true, relax_column_count: true });
-    
-    const bills = [];
-    const billMap = new Map();
-    
-    for (const row of rows) {
-      const refNumber = row['RefNumber'] || row['Ref Number'] || row['PONumber'] || row['PO Number'] || 'Unknown';
+  // Support for callback-style getConfig usage (legacy)
+  getConfig(category, callback) {
+    try {
+      const sql = category 
+        ? 'SELECT * FROM config WHERE category = ? ORDER BY category, key'
+        : 'SELECT * FROM config ORDER BY category, key';
+      const params = category ? [category] : [];
       
-      if (!billMap.has(refNumber)) {
-        billMap.set(refNumber, {
-          vendor: row['Vendor'] || row['Supplier'] || 'Unknown Vendor',
-          date: row['Date'] || new Date().toISOString().split('T')[0],
-          ref_num: refNumber,
-          due_date: row['DueDate'] || row['Due Date'] || '',
-          terms: row['Terms'] || row['PaymentTerms'] || '',
-          total_amount: 0,
-          lines: []
-        });
-      }
+      const rows = this.query(sql, params);
+      const result = {};
       
-      const bill = billMap.get(refNumber);
-      const lineAmount = parseFloat(row['Amount'] || row['LineAmount'] || row['Total'] || 0);
-      const quantity = parseFloat(row['Qty'] || row['Quantity'] || 1);
-      const unitCost = parseFloat(row['Cost'] || row['UnitCost'] || row['Price'] || lineAmount);
-      
-      bill.lines.push({
-        item: row['Item'] || row['Description'] || 'Unnamed Item',
-        description: row['Description'] || row['Item'] || '',
-        quantity: quantity,
-        unit_cost: unitCost,
-        line_amount: lineAmount
+      rows.forEach(row => {
+        result[row.key] = row.value;
       });
       
-      bill.total_amount += lineAmount;
+      if (callback) callback(null, result);
+    } catch (e) {
+      console.error('Error getting config:', e);
+      if (callback) callback(e, {});
     }
-    
-    return Array.from(billMap.values());
-  }
-
-  // Get recent transactions
-  async getRecentTransactions(limit = 50) {
-    const stmt = this.db.prepare(
-      'SELECT * FROM transactions ORDER BY created_at DESC LIMIT ?'
-    );
-    return stmt.all(limit);
   }
 }
 

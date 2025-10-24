@@ -2,32 +2,10 @@ services:
   web:
     build: .
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - NODE_ENV=${NODE_ENV}
+      - NODE_ENV=production
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - .:/usr/src/app
-      - /usr/src/app/node_modules
-    command: sh -lc "npm install && npm run dev"
-
-  db:
-    image: postgres:16-alpine
-    restart: always
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: mydb
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d mydb"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+    command: npm run dev
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -39,6 +17,3 @@ services:
       - TUNNEL_TOKEN=${CLOUDFLARED_TOKEN}
     # Use JSON array form to avoid shell interpolation issues
     command: ["tunnel", "--no-autoupdate", "run", "--token", "${CLOUDFLARED_TOKEN}"]
-
-volumes:
-  pgdata: {}

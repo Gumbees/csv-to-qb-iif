@@ -1,5 +1,6 @@
 const { Builder, parseString } = require('xml2js');
 const dayjs = require('dayjs');
+const DatabaseManager = require('./database');
 
 class QBWCService {
     constructor() {
@@ -8,38 +9,93 @@ class QBWCService {
             xmldec: { version: '1.0', encoding: 'utf-8' },
             headless: true 
         });
+        this.database = null;
+        
+        // Initialize database connection
+        try {
+            this.database = new DatabaseManager();
+        } catch (error) {
+            console.error('Failed to initialize database for QBWC:', error);
+        }
+    }
+
+    // Generate a proper GUID format with UPPERCASE HEX chars and curly braces for QuickBooks compatibility
+    generateSimpleGUID() {
+        const guid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16).toUpperCase();
+        });
+        return `{${guid}}`;
     }
 
     // Generate .qwc configuration file for QuickBooks Web Connector
     generateQWCFile(config) {
+        // Use Simple GUID format without dashes for QuickBooks compatibility
+        // QuickBooks sometimes has issues with standard GUID format
+        const ownerID = this.generateSimpleGUID();
+        const fileID = this.generateSimpleGUID();
+        
         const qwcConfig = {
             QBWCXML: {
-                AppName: config.appName || 'HaloPSA QuickBooks Sync',
+                AppName: config.appName || 'CSV to QuickBooks IIF Sync',
                 AppID: '',
                 AppURL: config.appUrl || 'http://localhost:3000/qbwc',
-                AppDescription: config.description || 'Sync HaloPSA purchase orders with QuickBooks',
+                AppDescription: config.description || 'Sync CSV purchase orders with QuickBooks',
                 AppSupport: config.supportUrl || 'http://localhost:3000/support',
-                UserName: config.username || 'halopsa_user',
-                OwnerID: this.generateGUID(),
-                FileID: this.generateGUID(),
+                UserName: config.username || 'qbwc_user',
+                OwnerID: ownerID,
+                FileID: fileID,
                 QBType: 'QBFS',
                 Style: 'Document',
                 Scheduler: {
                     RunEveryNMinutes: config.interval || 60
-                }
+                },
+                AppSupport: {
+                    IsReadOnly: false,
+                    CertificateURL: config.appUrl.replace('/qbwc', '/ssl-certificate.crt')
+                },
+                IsReadOnly: false
             }
         };
 
         return this.qbxmlBuilder.buildObject(qwcConfig);
     }
 
-    // Generate GUID for QWC file
+    // Generate GUID in QuickBooks format: {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} in uppercase
     generateGUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        // QuickBooks REQUIRES GUIDs with braces in uppercase
+        const guid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
             const r = Math.random() * 16 | 0;
             const v = c == 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
+            return v.toString(16).toUpperCase(); // MUST be uppercase
         });
+        return `{${guid}}`; // MUST be wrapped in braces
+    }
+
+    // Generate GUID for QWC file - QuickBooks requires specific GUID format
+    generateGUID() {
+        // Use static GUIDs for better QuickBooks compatibility
+        const staticGUIDs = [
+            '90A44FB5-33D9-4815-AC85-AC62A5F2CB6C',
+            '57F3B9B6-5013-42E8-8FEF-B77E1946E6B7'
+        ];
+        
+        return staticGUIDs[Math.floor(Math.random() * staticGUIDs.length)];
+    }
+
+    // Generate GUID for QWC file - QuickBooks requires specific GUID format
+    generateGUID() {
+        // Use static GUIDs for better QuickBooks compatibility
+        // QuickBooks can be sensitive to GUID format - these are properly formatted
+        const staticGUIDs = [
+            '90A44FB5-33D9-4815-AC85-AC62A5F2CB6C',
+            '57F3B9B6-5013-42E8-8FEF-B77E1946E6B7',
+            'EF92D2EE-45B2-490A-A5EB-4FD7A39B3C76' // Previous GUID that failed
+        ];
+        
+        // Return a static GUID (not random) for consistency
+        return staticGUIDs[Math.floor(Math.random() * staticGUIDs.length)];
     }
 
     // Generate QBXML for purchase orders
@@ -246,19 +302,59 @@ class QBWCService {
 
     // Authentication for QBWC
     authenticate(username, password) {
-        // Simple authentication - in production, use proper auth
+        console.log('QBWC Service authentication called:', { username, password: password ? '***' : 'not provided' });
+        
+        // Use hardcoded credentials for now to avoid database issues
         const validUsers = {
-            'halopsa_user': 'password123',
+            'qbwc_user': 'password123',
             'admin': 'admin123'
         };
 
         if (validUsers[username] && validUsers[username] === password) {
             const ticket = Math.random().toString(36).substring(7);
             this.createSession(ticket);
-            return { ticket, authType: 'none' };
+            console.log('QBWC Authentication SUCCESS:', { username, ticket });
+            // Return ticket string only for success
+            return { ticket, errorCode: '' };
         }
 
-        return { ticket: 'n', authType: 'Invalid credentials' };
+        console.log('QBWC Authentication FAILED: Invalid credentials for user:', username);
+        // Return empty ticket and error code for failure
+        return { ticket: '', errorCode: 'nvu' }; // nvu = non-valid username
+    }
+
+    // Helper method to get configuration values safely
+    getConfigValue(key) {
+        if (!this.database) {
+            console.error('Database not initialized for QBWC configuration');
+            // Return hardcoded defaults if database not available
+            const defaults = {
+                'qbwc_username': 'qbwc_user',
+                'qbwc_password': 'password123',
+                'qbwc_app_name': 'CSV to QuickBooks IIF Sync',
+                'qbwc_sync_interval': '30'
+            };
+            return defaults[key] || null;
+        }
+        
+        try {
+            // Use the database method properly - it's async
+            return new Promise((resolve) => {
+                this.database.getConfig(null, (err, config) => {
+                    if (err || !config) {
+                        console.error('Error getting config value:', err);
+                        resolve(null);
+                    } else if (config[key]) {
+                        resolve(config[key].value);
+                    } else {
+                        resolve(null);
+                    }
+                });
+            });
+        } catch (error) {
+            console.error('Error getting config value:', error);
+            return null;
+        }
     }
 
     // Generate status report

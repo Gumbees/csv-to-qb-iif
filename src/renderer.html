@@ -418,6 +418,102 @@
         </div>
         <div id="ledger-table"></div>
       </div>
+      
+      <!-- QuickBooks Web Connector Configuration -->
+      <div id="qbwc-content" class="card">
+        <h3>🔌 QuickBooks Web Connector Setup</h3>
+        <div class="muted" style="margin-bottom: 16px;">
+          Configure credentials and download the configuration file to sync with QuickBooks Desktop.
+        </div>
+        
+        <!-- QBWC Configuration Form -->
+        <div id="qbwc-config-form" class="card" style="background: #f8fafc; margin-bottom: 16px;">
+          <h4>⚙️ QBWC Configuration</h4>
+          <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+            <div>
+              <label for="qbwc-app-name">App Name:</label>
+              <input type="text" id="qbwc-app-name" placeholder="Application name in QBWC">
+            </div>
+            <div>
+              <label for="qbwc-username">Username:</label>
+              <input type="text" id="qbwc-username" placeholder="Authentication username">
+            </div>
+            <div>
+              <label for="qbwc-password">Password:</label>
+              <input type="password" id="qbwc-password" placeholder="Authentication password">
+            </div>
+            <div>
+              <label for="qbwc-interval">Sync Interval (minutes):</label>
+              <input type="number" id="qbwc-interval" min="1" max="1440" value="30">
+            </div>
+          </div>
+          <div style="margin-top: 16px;">
+            <button id="save-qbwc-config" class="btn success">💾 Save Configuration</button>
+            <button id="reset-qbwc-config" class="btn secondary">🔄 Reset to Defaults</button>
+          </div>
+        </div>
+        
+        <div class="action-buttons" style="margin-bottom: 16px;">
+          <button id="download-qwc" class="btn success">📁 Download QWC Configuration File</button>
+          <button id="check-qbwc-status" class="btn secondary">🔄 Check QBWC Status</button>
+          <button id="check-ssl-status" class="btn warning">🔒 Check SSL Status</button>
+        </div>
+        
+        <!-- SSL Troubleshooting Information -->
+        <div id="ssl-info" style="display: none;" class="card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
+          <h4>🔒 SSL Certificate Troubleshooting</h4>
+          <div id="ssl-status-content"></div>
+          <div style="margin-top: 12px;">
+            <strong>QuickBooks SSL Requirements:</strong>
+            <ul style="margin: 8px 0 0 0; padding-left: 20px;">
+              <li>✅ Valid SSL certificate from trusted Certificate Authority</li>
+              <li>❌ Self-signed certificates often cause verification errors</li>
+              <li>✅ Cloudflare tunnels usually work (provides valid SSL)</li>
+              <li>❌ Localhost HTTP will fail certificate verification</li>
+            </ul>
+            <div style="margin-top: 12px;">
+              <strong>Solutions:</strong>
+              <ol style="margin: 8px 0 0 0; padding-left: 20px;">
+                <li>Use the Cloudflare tunnel URL: <code>https://qbd-msp.dev.dtctoday.com</code></li>
+                <li>In QBWC error dialog, click "Yes" to accept the certificate</li>
+                <li>Add certificate to Windows Trusted Root store</li>
+                <li>Use a domain with valid SSL certificate</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+        
+        <div id="qbwc-info" style="display: none;">
+          <div class="card" style="background: #f0f9ff; border-left: 4px solid #0369a1;">
+            <h4>📋 QuickBooks Web Connector Information</h4>
+            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+              <div>
+                <strong>Server Status:</strong> <span id="qbwc-status">-</span>
+              </div>
+              <div>
+                <strong>QBWC Endpoint:</strong> <a href="#" id="qbwc-endpoint-link" target="_blank">-</a>
+              </div>
+              <div>
+                <strong>Test Username:</strong> <code id="qbwc-username-display">-</code>
+              </div>
+              <div>
+                <strong>Test Password:</strong> <code id="qbwc-password-display">-</code>
+              </div>
+            </div>
+            <div style="margin-top: 12px;">
+              <strong>Instructions:</strong>
+              <ol style="margin: 8px 0 0 0; padding-left: 20px;">
+                <li>Configure credentials above or use defaults</li>
+                <li>Download the QWC file (auto-updates with settings)</li>
+                <li>Launch QuickBooks Desktop (2024 or newer)</li>
+                <li>Open QuickBooks Web Connector</li>
+                <li>Add application using the downloaded QWC file</li>
+                <li>Use the configured credentials</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     
     <script>
@@ -1365,6 +1461,228 @@
           el.innerHTML = html;
         } catch (err) {
           document.getElementById('imports-metadata-table').innerHTML = `<div class="muted">Error loading records: ${err.message}</div>`;
+        }
+      }
+
+      // QuickBooks Web Connector functionality
+      document.addEventListener('DOMContentLoaded', function() {
+        const downloadQwcBtn = document.getElementById('download-qwc');
+        const checkQbwcStatusBtn = document.getElementById('check-qbwc-status');
+        const checkSslStatusBtn = document.getElementById('check-ssl-status');
+        const saveQbwcConfigBtn = document.getElementById('save-qbwc-config');
+        const resetQbwcConfigBtn = document.getElementById('reset-qbwc-config');
+        const qbwcInfoDiv = document.getElementById('qbwc-info');
+        
+        if (downloadQwcBtn) {
+          downloadQwcBtn.addEventListener('click', downloadQwcFile);
+        }
+        
+        if (checkQbwcStatusBtn) {
+          checkQbwcStatusBtn.addEventListener('click', checkQbwcStatus);
+        }
+        
+        if (checkSslStatusBtn) {
+          checkSslStatusBtn.addEventListener('click', checkSslStatus);
+        }
+        
+        if (saveQbwcConfigBtn) {
+          saveQbwcConfigBtn.addEventListener('click', saveQbwcConfig);
+        }
+        
+        if (resetQbwcConfigBtn) {
+          resetQbwcConfigBtn.addEventListener('click', resetQbwcConfig);
+        }
+        
+        // Load current configuration when page loads
+        loadQbwcConfig();
+      });
+
+      async function downloadQwcFile() {
+        try {
+          // Get the current base URL to ensure FQDN is used
+          const response = await fetch('/api/qbwc/info');
+          if (!response.ok) {
+            throw new Error('Failed to get QBWC info');
+          }
+          
+          const qbwcInfo = await response.json();
+          const qwcUrl = qbwcInfo.qwc_config;
+          
+          // Check SSL status for helpful guidance
+          const sslResponse = await fetch('/api/ssl/info');
+          const sslInfo = sslResponse.ok ? await sslResponse.json() : null;
+          
+          // Trigger download using the dynamic URL
+          const a = document.createElement('a');
+          a.href = qwcUrl;
+          a.download = '';
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          
+          // Show success message with SSL guidance
+          let message = `✅ QWC configuration file downloaded!\n\nServer: ${qbwcInfo.base_url}\nFile will work with any FQDN including your Cloudflare tunnel.`;
+          
+          if (sslInfo && !sslInfo.is_https && qbwcInfo.base_url.includes('localhost')) {
+            message += '\n\n⚠️ SSL Certificate Notice:\nQuickBooks may show certificate error for localhost.\nRecommended: Use Cloudflare URL instead:\nhttps://qbd-msp.dev.dtctoday.com\n\nWhen QBWC shows certificate error, click "Yes" to accept.';
+          } else if (sslInfo && sslInfo.is_https) {
+            message += '\n\n✅ HTTPS active - Certificate should work with QuickBooks!';
+          }
+          
+          alert(message);
+          
+        } catch (error) {
+          alert('❌ Error downloading QWC file: ' + error.message + '\n\nTrying fallback URL...');
+          
+          // Fallback to direct download
+          const a = document.createElement('a');
+          a.href = '/qbwc/config';
+          a.download = '';
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+      }
+
+      async function loadQbwcConfig() {
+        try {
+          const response = await fetch('/api/qbwc/info');
+          if (!response.ok) {
+            throw new Error('Failed to get QBWC configuration');
+          }
+          
+          const qbwcInfo = await response.json();
+          
+          // Fill configuration form
+          document.getElementById('qbwc-app-name').value = qbwcInfo.app_name;
+          document.getElementById('qbwc-username').value = qbwcInfo.test_credentials.username;
+          document.getElementById('qbwc-password').value = qbwcInfo.test_credentials.password;
+          document.getElementById('qbwc-interval').value = 30; // Default until we get from config
+          
+        } catch (error) {
+          console.error('Error loading QBWC config:', error);
+        }
+      }
+
+      async function saveQbwcConfig() {
+        try {
+          const config = {
+            qbwc_app_name: document.getElementById('qbwc-app-name').value,
+            qbwc_username: document.getElementById('qbwc-username').value,
+            qbwc_password: document.getElementById('qbwc-password').value,
+            qbwc_sync_interval: document.getElementById('qbwc-interval').value
+          };
+          
+          const response = await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+          });
+          
+          if (!response.ok) {
+            throw new Error('Failed to save configuration');
+          }
+          
+          const result = await response.json();
+          alert('✅ QBWC configuration saved successfully!');
+          
+          // Reload the configuration to reflect changes
+          loadQbwcConfig();
+          
+        } catch (error) {
+          alert('❌ Error saving QBWC configuration: ' + error.message);
+        }
+      }
+
+      async function resetQbwcConfig() {
+        if (confirm('Reset QBWC configuration to defaults?\n\nThis will set:\n- Username: halopsa_user\n- Password: password123\n- App Name: CSV to QuickBooks IIF Sync\n- Sync Interval: 30 minutes')) {
+          try {
+            const defaultConfig = {
+              qbwc_app_name: 'CSV to QuickBooks IIF Sync',
+              qbwc_username: 'halopsa_user',
+              qbwc_password: 'password123',
+              qbwc_sync_interval: '30'
+            };
+            
+            const response = await fetch('/api/config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(defaultConfig)
+            });
+            
+            if (!response.ok) {
+              throw new Error('Failed to reset configuration');
+            }
+            
+            alert('✅ QBWC configuration reset to defaults!');
+            
+            // Reload the configuration
+            loadQbwcConfig();
+            
+          } catch (error) {
+            alert('❌ Error resetting QBWC configuration: ' + error.message);
+          }
+        }
+      }
+
+      async function checkSslStatus() {
+        try {
+          const response = await fetch('/api/ssl/info');
+          if (!response.ok) {
+            throw new Error('Failed to get SSL status');
+          }
+          
+          const sslInfo = await response.json();
+          const sslInfoDiv = document.getElementById('ssl-info');
+          const sslContent = document.getElementById('ssl-status-content');
+          
+          // Update SSL status display
+          let sslHtml = `
+            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+              <div><strong>Protocol:</strong> ${sslInfo.protocol}</div>
+              <div><strong>HTTPS Active:</strong> ${sslInfo.is_https ? '✅ Yes' : '❌ No'}</div>
+              <div><strong>Host:</strong> ${sslInfo.host}</div>
+              <div><strong>Certificate Status:</strong> ${sslInfo.certificate_status}</div>
+            </div>
+          `;
+          
+          sslContent.innerHTML = sslHtml;
+          sslInfoDiv.style.display = 'block';
+          
+          // Provide specific guidance based on SSL status
+          if (!sslInfo.is_https) {
+            alert('⚠️ SSL Issue Detected!\n\nQuickBooks requires HTTPS with valid SSL certificate.\n\nRecommended Solutions:\n1. Use Cloudflare URL: https://qbd-msp.dev.dtctoday.com\n2. When QBWC shows certificate error, click "Yes" to accept\n3. Or configure your domain with valid SSL certificate');
+          }
+          
+        } catch (error) {
+          alert('❌ Error checking SSL status: ' + error.message);
+        }
+      }
+
+      async function checkQbwcStatus() {
+        try {
+          const response = await fetch('/api/qbwc/info');
+          if (!response.ok) {
+            throw new Error('Failed to get QBWC status');
+          }
+          
+          const qbwcInfo = await response.json();
+          const infoDiv = document.getElementById('qbwc-info');
+          
+          // Update UI with QBWC information
+          document.getElementById('qbwc-status').textContent = qbwcInfo.status === 'active' ? '✅ Active' : '❌ Inactive';
+          document.getElementById('qbwc-endpoint-link').textContent = qbwcInfo.qbwc_endpoint;
+          document.getElementById('qbwc-endpoint-link').href = qbwcInfo.qbwc_endpoint;
+          document.getElementById('qbwc-username-display').textContent = qbwcInfo.test_credentials.username;
+          document.getElementById('qbwc-password-display').textContent = qbwcInfo.test_credentials.password;
+          
+          // Show the info section
+          infoDiv.style.display = 'block';
+          
+        } catch (error) {
+          alert('❌ Error checking QBWC status: ' + error.message);
         }
       }
     </script>
