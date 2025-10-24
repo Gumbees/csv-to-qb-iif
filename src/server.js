@@ -7,6 +7,8 @@ const multer = require('multer');
 const { parse } = require('csv-parse/sync');
 const dayjs = require('dayjs');
 const Database = require('./database');
+const StripeAPI = require('./stripe-api');
+const HaloPSAAPI = require('./halopsa-api');
 const crypto = require('crypto');
 const QBWCService = require('./qbwc-service');
 let StripeLib = null; try { StripeLib = require('stripe'); } catch (_) { /* optional dependency */ }
@@ -1297,10 +1299,248 @@ app.post('/api/config', async (req, res) => {
             message: 'Configuration updated successfully',
             updates: configUpdates 
         });
-        
     } catch (error) {
         console.error('Error updating configuration:', error);
         res.status(500).json({ error: 'Failed to update configuration' });
+    }
+});
+
+// Configuration API endpoints
+app.post('/api/config', async (req, res) => {
+    try {
+        const updates = req.body;
+        const configUpdates = {};
+        
+        for (const [key, value] of Object.entries(updates)) {
+            await db.run(
+                'INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+                [key, value]
+            );
+            configUpdates[key] = value;
+        }
+        
+        res.json({ 
+            success: true, 
+            message: 'Configuration updated successfully',
+            updates: configUpdates 
+        });
+    } catch (error) {
+        console.error('Error updating configuration:', error);
+        res.status(500).json({ error: 'Failed to update configuration' });
+    }
+});
+
+app.get('/api/config', async (req, res) => {
+    try {
+        const allConfigs = await db.all('SELECT * FROM config');
+        const config = {};
+        allConfigs.forEach(row => {
+            config[row.key] = row.value;
+        });
+        res.json(config);
+    } catch (error) {
+        console.error('Error fetching configuration:', error);
+        res.status(500).json({ error: 'Failed to fetch configuration' });
+    }
+});
+
+app.get('/api/stripe/test', async (req, res) => {
+    try {
+        const stripeAPI = new StripeAPI(db);
+        const result = await stripeAPI.testConnection();
+        res.json(result);
+    } catch (error) {
+        console.error('Error testing Stripe connection:', error);
+        res.status(500).json({ success: false, message: 'Error testing Stripe connection' });
+    }
+});
+
+app.post('/api/stripe/sync', async (req, res) => {
+    try {
+        const stripeAPI = new StripeAPI(db);
+        const result = await stripeAPI.syncTransactions();
+        res.json(result);
+    } catch (error) {
+        console.error('Error syncing Stripe transactions:', error);
+        res.status(500).json({ success: false, message: 'Error syncing Stripe transactions' });
+    }
+});
+
+app.get('/api/stripe/transactions', async (req, res) => {
+    try {
+        const transactions = await db.all('SELECT * FROM stripe_transactions ORDER BY created DESC LIMIT 50');
+        // Enhance transactions with customer names
+        const enhancedTransactions = await Promise.all(transactions.map(async (tx) => {
+            if (tx.customer_id) {
+                const mapping = await db.get(
+                    'SELECT stripe_customer_name FROM customer_mappings WHERE stripe_customer_id = ?',
+                    [tx.customer_id]
+                );
+                if (mapping) {
+                    tx.customer_name = mapping.stripe_customer_name;
+                }
+            }
+            return tx;
+        }));
+        res.json(enhancedTransactions);
+    } catch (error) {
+        console.error('Error fetching Stripe transactions:', error);
+        res.status(500).json({ error: 'Failed to fetch transactions' });
+    }
+});
+
+app.get('/api/stripe/customers', async (req, res) => {
+    try {
+        const stripeAPI = new StripeAPI(db);
+        const customers = await stripeAPI.getCustomers();
+        res.json(customers);
+    } catch (error) {
+        console.error('Error fetching Stripe customers:', error);
+        res.status(500).json({ error: 'Failed to fetch customers' });
+    }
+});
+
+app.get('/api/halopsa/clients', async (req, res) => {
+    try {
+        const halopsaAPI = new HaloPSAAPI(db);
+        const clients = await halopsaAPI.getClients();
+        res.json(clients);
+    } catch (error) {
+        console.error('Error fetching HaloPSA clients:', error);
+        res.status(500).json({ error: 'Failed to fetch clients' });
+    }
+});
+
+app.post('/api/customers/map', async (req, res) => {
+    try {
+        const { stripe_customer_id, halopsa_client_id } = req.body;
+        await db.run(
+            'INSERT OR REPLACE INTO customer_mappings (stripe_customer_id, halopsa_client_id, mapping_confirmed, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
+            [stripe_customer_id, halopsa_client_id, true]
+        );
+        res.json({ success: true, message: 'Customer mapping saved' });
+    } catch (error) {
+        console.error('Error saving customer mapping:', error);
+        res.status(500).json({ error: 'Failed to save mapping' });
+    }
+});
+
+app.get('/api/customers/mappings', async (req, res) => {
+    try {
+        const mappings = await db.all('SELECT * FROM customer_mappings ORDER BY updated_at DESC');
+        res.json(mappings);
+    } catch (error) {
+        console.error('Error fetching customer mappings:', error);
+        res.status(500).json({ error: 'Failed to fetch mappings' });
+    }
+});
+
+app.post('/api/customers/automatch', async (req, res) => {
+    try {
+        const halopsaAPI = new HaloPSAAPI(db);
+        const stripeAPI = new StripeAPI(db);
+        
+        const stripeCustomers = await stripeAPI.getCustomers();
+        const haloClients = await halopsaAPI.getClients();
+        
+        const matches = [];
+        
+        for (const stripeCustomer of stripeCustomers) {
+            let bestMatch = null;
+            let bestScore = 0;
+            
+            for (const haloClient of haloClients) {
+                const score = calculateMatchScore(stripeCustomer, haloClient);
+                if (score > bestScore && score > 0.7) {
+                    bestScore = score;
+                    bestMatch = haloClient;
+                }
+            }
+            
+            if (bestMatch) {
+                matches.push({
+                    stripe_customer: stripeCustomer,
+                    halo_client: bestMatch,
+                    match_score: bestScore
+                });
+            }
+        }
+        
+        res.json({ success: true, matches: matches });
+    } catch (error) {
+        console.error('Error auto-matching customers:', error);
+        res.status(500).json({ error: 'Failed to auto-match customers' });
+    }
+});
+
+// Helper function for customer matching
+function calculateMatchScore(stripeCustomer, haloClient) {
+    let score = 0;
+    
+    // Email match (most reliable)
+    if (stripeCustomer.email && haloClient.email && 
+        stripeCustomer.email.toLowerCase() === haloClient.email.toLowerCase()) {
+        score += 0.8;
+    }
+    
+    // Name similarity
+    if (stripeCustomer.name && haloClient.name) {
+        const name1 = stripeCustomer.name.toLowerCase();
+        const name2 = haloClient.name.toLowerCase();
+        if (name1.includes(name2) || name2.includes(name1)) {
+            score += 0.6;
+        }
+    }
+    
+    return Math.min(score, 1.0);
+}
+
+// System status endpoint
+app.get('/api/status', async (req, res) => {
+    try {
+        const status = {
+            qbwc: { status: 'unknown', message: '' },
+            stripe: { status: 'unknown', message: '' },
+            halopsa: { status: 'unknown', message: '' },
+            database: { status: 'unknown', message: '' }
+        };
+        
+        // Check database
+        try {
+            await db.all('SELECT 1');
+            status.database = { status: 'healthy', message: 'Database connection OK' };
+        } catch (error) {
+            status.database = { status: 'error', message: 'Database connection failed' };
+        }
+        
+        // Check Stripe
+        try {
+            const stripeAPI = new StripeAPI(db);
+            const stripeTest = await stripeAPI.testConnection();
+            status.stripe = { 
+                status: stripeTest.success ? 'healthy' : 'error', 
+                message: stripeTest.message 
+            };
+        } catch (error) {
+            status.stripe = { status: 'error', message: error.message };
+        }
+        
+        // Check HaloPSA
+        try {
+            const halopsaAPI = new HaloPSAAPI(db);
+            const halopsaTest = await halopsaAPI.testConnection();
+            status.halopsa = { 
+                status: halopsaTest.success ? 'healthy' : 'error', 
+                message: halopsaTest.message 
+            };
+        } catch (error) {
+            status.halopsa = { status: 'error', message: error.message };
+        }
+        
+        res.json(status);
+    } catch (error) {
+        console.error('Error checking system status:', error);
+        res.status(500).json({ error: 'Failed to check system status' });
     }
 });
 

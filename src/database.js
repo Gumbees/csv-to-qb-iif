@@ -76,6 +76,43 @@ class DatabaseManager {
         ')'
       );
 
+      this.db.exec(
+        'CREATE TABLE IF NOT EXISTS stripe_transactions (' +
+          'id INTEGER PRIMARY KEY AUTOINCREMENT,' +
+          'stripe_id TEXT UNIQUE NOT NULL,' +
+          'customer_id TEXT,' +
+          'amount INTEGER NOT NULL,' +
+          'currency TEXT NOT NULL,' +
+          'description TEXT,' +
+          'status TEXT NOT NULL,' +
+          'created INTEGER NOT NULL,' +
+          'invoice_id TEXT,' +
+          'payment_intent_id TEXT,' +
+          'refunded BOOLEAN DEFAULT FALSE,' +
+          'raw_data TEXT NOT NULL,' +
+          'mapped_to_halo BOOLEAN DEFAULT FALSE,' +
+          'mapped_to_qb BOOLEAN DEFAULT FALSE,' +
+          'created_at DATETIME DEFAULT CURRENT_TIMESTAMP' +
+        ')'
+      );
+
+      this.db.exec(
+        'CREATE TABLE IF NOT EXISTS customer_mappings (' +
+          'id INTEGER PRIMARY KEY AUTOINCREMENT,' +
+          'stripe_customer_id TEXT UNIQUE NOT NULL,' +
+          'stripe_customer_email TEXT,' +
+          'stripe_customer_name TEXT,' +
+          'halopsa_client_id INTEGER,' +
+          'halopsa_client_name TEXT,' +
+          'qb_customer_id TEXT,' +
+          'qb_customer_name TEXT,' +
+          'auto_mapped BOOLEAN DEFAULT FALSE,' +
+          'mapping_confirmed BOOLEAN DEFAULT FALSE,' +
+          'created_at DATETIME DEFAULT CURRENT_TIMESTAMP,' +
+          'updated_at DATETIME DEFAULT CURRENT_TIMESTAMP' +
+        ')'
+      );
+
       // Insert default configuration
       const defaultConfigs = [
         ['auto_match_threshold', '0.8', 'number', 'general', 'Auto-match Threshold', 'Confidence threshold for automatic matching', null, 1],
@@ -87,7 +124,16 @@ class DatabaseManager {
         ['qbwc_username', 'qbwc_user', 'text', 'qbwc', 'QBWC Username', 'Username for QuickBooks Web Connector', null, 1],
         ['qbwc_password', 'password123', 'password', 'qbwc', 'QBWC Password', 'Password for QuickBooks Web Connector', null, 1],
         ['qbwc_app_name', 'CSV to QuickBooks IIF Sync', 'text', 'qbwc', 'QBWC App Name', 'Application name shown in QuickBooks', null, 1],
-        ['qbwc_sync_interval', '30', 'number', 'qbwc', 'Sync Interval (minutes)', 'How often QBWC should check for updates', null, 1]
+        ['qbwc_sync_interval', '30', 'number', 'qbwc', 'Sync Interval (minutes)', 'How often QBWC should check for updates', null, 1],
+        ['stripe_secret_key', '', 'password', 'stripe', 'Stripe Secret Key', 'Your Stripe secret API key from the dashboard', null, 1],
+        ['stripe_webhook_secret', '', 'password', 'stripe', 'Stripe Webhook Secret', 'Webhook secret for Stripe events', null, 1],
+        ['stripe_sync_enabled', 'false', 'boolean', 'stripe', 'Enable Stripe Sync', 'Automatically sync Stripe transactions', null, 1],
+        ['stripe_sync_interval', '60', 'number', 'stripe', 'Sync Interval (minutes)', 'How often to check for new Stripe transactions', null, 1],
+        ['stripe_default_currency', 'USD', 'text', 'stripe', 'Default Currency', 'Default currency for Stripe transactions', null, 1],
+        ['halopsa_api_key', '', 'password', 'halopsa', 'HaloPSA API Key', 'API key for HaloPSA integration', null, 1],
+        ['halopsa_api_url', 'https://halo.dtctoday.com', 'text', 'halopsa', 'HaloPSA API URL', 'Base URL for HaloPSA API', null, 1],
+        ['customer_auto_match_enabled', 'true', 'boolean', 'mapping', 'Auto-match Customers', 'Automatically match Stripe customers to HaloPSA clients', null, 1],
+        ['customer_match_threshold', '0.85', 'number', 'mapping', 'Match Threshold', 'Confidence threshold for customer matching', null, 1]
       ];
 
       const stmt = this.db.prepare(`

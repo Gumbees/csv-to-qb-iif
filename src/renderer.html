@@ -1,1692 +1,521 @@
 <!doctype html>
 <html>
   <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline';" />
-    <title>CSV ➜ QuickBooks Bills (IIF) - Dashboard</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CSV to QuickBooks IIF Sync</title>
     <style>
-      body { 
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; 
-        margin: 0; 
-        background: #f8fafc;
-      }
-      header { 
-        padding: 16px 24px; 
-        border-bottom: 1px solid #e5e7eb; 
-        background: white;
-        display: flex; 
-        align-items: center; 
-        justify-content: space-between; 
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      }
-      .btn { 
-        border: 1px solid #111827; 
-        background: #111827; 
-        color: #fff; 
-        padding: 10px 16px; 
-        border-radius: 8px; 
-        cursor: pointer; 
-        font-weight: 500;
-        transition: all 0.2s;
-      }
-      .btn:hover {
-        background: #374151;
-        border-color: #374151;
-      }
-      .btn.secondary { 
-        background: #fff; 
-        color: #111827; 
-        border-color: #d1d5db;
-      }
-      .btn.secondary:hover {
-        background: #f9fafb;
-        border-color: #9ca3af;
-      }
-      .btn.success {
-        background: #059669;
-        border-color: #059669;
-      }
-      .btn.success:hover {
-        background: #047857;
-        border-color: #047857;
-      }
-      .container { 
-        padding: 24px; 
-        max-width: 1400px;
-        margin: 0 auto;
-      }
-      .dropzone { 
-        border: 2px dashed #9ca3af; 
-        border-radius: 12px; 
-        padding: 40px; 
-        text-align: center; 
-        color: #6b7280;
-        background: white;
-        transition: all 0.2s;
-      }
-      .dropzone:hover {
-        border-color: #111827;
-        background: #f9fafb;
-      }
-      .dropzone.dragover {
-        border-color: #059669;
-        background: #f0fdf4;
-      }
-      .tabs { 
-        display: flex; 
-        gap: 8px; 
-        margin-top: 24px; 
-        background: white;
-        padding: 16px 24px;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      }
-      .tab { 
-        padding: 10px 16px; 
-        border: 1px solid #e5e7eb; 
-        border-radius: 9999px; 
-        cursor: pointer; 
-        transition: all 0.2s;
-        font-weight: 500;
-      }
-      .tab:hover {
-        background: #f9fafb;
-        border-color: #d1d5db;
-      }
-      .tab.active { 
-        background: #111827; 
-        color: #fff; 
-        border-color: #111827; 
-      }
-      .card { 
-        border: 1px solid #e5e7eb; 
-        border-radius: 12px; 
-        padding: 24px; 
-        margin-top: 24px; 
-        background: white;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      }
-      .row { 
-        display: flex; 
-        gap: 12px; 
-        align-items: center; 
-      }
-      .grid { 
-        display: grid; 
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
-        gap: 24px; 
-      }
-      .muted { color: #6b7280; }
-      .list ul { margin: 0; padding-left: 20px; }
-      .hidden { display: none; }
-      .db-content { margin-top: 16px; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { padding: 12px; text-align: left; }
-      th { background: #f9fafb; font-weight: 600; }
-      tr:hover { background: #f9fafb; }
-      
-      .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 20px;
-        margin-bottom: 32px;
-      }
-      
-      .stat-card {
-        background: white;
-        padding: 24px;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        text-align: center;
-      }
-      
-      .stat-number {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #111827;
-        margin-bottom: 8px;
-      }
-      
-      .stat-label {
-        color: #6b7280;
-        font-size: 0.875rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-      }
-      
-      .action-buttons {
-        display: flex;
-        gap: 16px;
-        margin-bottom: 32px;
-      }
-      
-      .import-preview {
-        background: #f9fafb;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 16px;
-        margin-top: 16px;
-      }
-      
-      .duplicate-warning {
-        background: #fef3c7;
-        border: 1px solid #f59e0b;
-        color: #92400e;
-        padding: 12px;
-        border-radius: 8px;
-        margin-top: 16px;
-      }
-      
-      .success-message {
-        background: #d1fae5;
-        border: 1px solid #10b981;
-        color: #065f46;
-        padding: 12px;
-        border-radius: 8px;
-        margin-top: 16px;
-      }
-      
-      .modal {
-        position: fixed;
-        z-index: 1000;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0,0,0,0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      
-      .modal-content {
-        background-color: white;
-        margin: auto;
-        padding: 0;
-        border-radius: 12px;
-        width: 90%;
-        max-width: 600px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-      }
-      
-      .modal-header {
-        padding: 20px 24px;
-        border-bottom: 1px solid #e5e7eb;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-      
-      .modal-body {
-        padding: 24px;
-      }
-      
-      .btn-close {
-        background: none;
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-        color: #6b7280;
-        padding: 0;
-        width: 30px;
-        height: 30px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 4px;
-      }
-      
-      .btn-close:hover {
-        background: #f3f4f6;
-        color: #374151;
-      }
-      
-      .export-option {
-        margin-bottom: 20px;
-        padding: 16px;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        background: #f9fafb;
-      }
-      
-      .export-option label {
-        display: block;
-        cursor: pointer;
-      }
-      
-      .export-option input[type="checkbox"] {
-        margin-right: 12px;
-        transform: scale(1.2);
-      }
+      body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+      .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+      h1 { color: #333; border-bottom: 2px solid #007acc; padding-bottom: 10px; }
+      .tab-container { margin: 20px 0; }
+      .tabs { display: flex; border-bottom: 1px solid #ddd; }
+      .tab { padding: 10px 20px; cursor: pointer; border: 1px solid transparent; border-bottom: none; margin-right: 5px; border-radius: 4px 4px 0 0; }
+      .tab.active { background: #007acc; color: white; border-color: #007acc; }
+      .tab-content { display: none; padding: 20px; border: 1px solid #ddd; border-top: none; }
+      .tab-content.active { display: block; }
+      .config-section { margin-bottom: 30px; }
+      .config-header { background: #f0f0f0; padding: 10px 15px; border-left: 4px solid #007acc; margin-bottom: 15px; }
+      .form-group { margin-bottom: 15px; }
+      label { display: block; margin-bottom: 5px; font-weight: 600; }
+      input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+      textarea { height: 100px; resize: vertical; }
+      .btn { background: #007acc; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px; }
+      .btn:hover { background: #005a9e; }
+      .btn.secondary { background: #6c757d; }
+      .status { padding: 10px; border-radius: 4px; margin: 10px 0; }
+      .status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+      .status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+      .status.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+      .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+      .table th, .table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+      .table th { background: #f8f9fa; }
+      .actions { display: flex; gap: 10px; }
+      .action-btn { padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer; font-size: 12px; }
+      .action-btn.primary { background: #007acc; color: white; }
+      .action-btn.success { background: #28a745; color: white; }
+      .action-btn.warning { background: #ffc107; color: black; }
+      .action-btn.danger { background: #dc3545; color: white; }
+      .mapping-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+      .customer-list { max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; }
+      .customer-item { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+      .customer-item:hover { background: #f0f0f0; }
+      .customer-item.selected { background: #e3f2fd; border-left: 3px solid #007acc; }
+      .match-score { float: right; color: #666; font-size: 12px; }
     </style>
   </head>
   <body>
-    <header>
-      <div><strong>CSV ➜ QuickBooks Bills (IIF) - Dashboard</strong></div>
-      <div class="row">
-        <button id="import-btn" class="btn success">Import CSV</button>
-        <button id="export-btn" class="btn secondary">Export Last 24h</button>
-      </div>
-    </header>
-    
     <div class="container">
-      <!-- Dashboard Stats -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-number" id="total-transactions">-</div>
-          <div class="stat-label">Total Transactions</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number" id="total-inventory">-</div>
-          <div class="stat-label">Inventory Items</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number" id="total-value">$0</div>
-          <div class="stat-label">Inventory Value</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number" id="recent-transactions">-</div>
-          <div class="stat-label">Recent (30 days)</div>
-        </div>
-      </div>
+      <h1>CSV to QuickBooks IIF Sync</h1>
       
-      <!-- Action Buttons -->
-      <div class="action-buttons">
-        <button id="export-24h" class="btn secondary">Export Last 24 Hours</button>
-        <button id="refresh-dashboard" class="btn secondary">Refresh Dashboard</button>
-      </div>
-      
-      
-      <!-- Import Section -->
-      <div class="card" id="import-section">
-        <h3>Import New CSV Data</h3>
-        <div id="dz" class="dropzone">
-          <div style="font-size: 1.2rem; margin-bottom: 8px;">📁</div>
-          <div>Drag & drop CSV file here or click to browse</div>
-          <div style="margin-top: 8px; font-size: 0.875rem; color: #9ca3af;">
-            Supports: Vendor, RefNumber, Date, Item, Qty, Cost, Description
-          </div>
-        </div>
-        <input id="file" type="file" accept=".csv" class="hidden" />
-        
-        <div id="import-preview" class="import-preview hidden">
-          <h4>Import Preview</h4>
-          <div id="preview-content"></div>
-          <div style="margin-top: 16px;">
-            <button id="confirm-import" class="btn success">Confirm Import</button>
-            <button id="cancel-import" class="btn secondary">Cancel</button>
-          </div>
+      <div class="tab-container">
+        <div class="tabs">
+          <div class="tab active" data-tab="config">Configuration</div>
+          <div class="tab" data-tab="stripe">Stripe Integration</div>
+          <div class="tab" data-tab="mapping">Customer Mapping</div>
+          <div class="tab" data-tab="status">System Status</div>
         </div>
         
-        <div id="duplicate-warning" class="duplicate-warning hidden">
-          <strong>⚠️ Duplicate File Detected</strong>
-          <div id="duplicate-message"></div>
-        </div>
-        
-        <div id="success-message" class="success-message hidden">
-          <strong>✅ Import Successful!</strong>
-          <div id="success-details"></div>
-        </div>
-        
-        <div id="other-import-result" class="success-message hidden">
-          <strong id="other-import-title">✅ Import Completed</strong>
-          <div id="other-import-details"></div>
-        </div>
-      </div>
-      
-      <!-- Data Tabs -->
-      <div class="tabs">
-        <div id="tab-dashboard" class="tab active">Dashboard</div>
-        <div id="tab-transactions" class="tab">Transactions</div>
-        <div id="tab-inventory" class="tab">Inventory</div>
-        <div id="tab-imports" class="tab">Import History</div>
-        <div id="tab-exports" class="tab">Export History</div>
-        <div id="tab-ledger" class="tab">Ledger</div>
-      </div>
-      
-      <!-- Dashboard Content -->
-      <div id="dashboard-content" class="card">
-        <h3>Recent Activity</h3>
-        <div id="recent-activity"></div>
-      </div>
-      
-      <!-- Transactions Content -->
-      <div id="transactions-content" class="card hidden">
-        <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
-          <h3>All Transactions</h3>
-          <button id="refresh-transactions" class="btn secondary">Refresh</button>
-        </div>
-        <div id="transactions-table"></div>
-      </div>
-      
-      <!-- Inventory Content -->
-      <div id="inventory-content" class="card hidden">
-        <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
-          <h3>Inventory Summary</h3>
-          <div style="display:flex; gap:8px;">
-            <button id="refresh-inventory" class="btn secondary">Refresh</button>
-            <button id="qbd-config" class="btn secondary">QBD Account Config</button>
-          </div>
-        </div>
-        <div id="inventory-table"></div>
-        <div id="qbd-config-panel" class="card hidden" style="margin-top:16px;">
-          <h4>QuickBooks Desktop Accounts</h4>
-          <div class="muted" style="margin-bottom:8px;">Manage available account names and set defaults by role (inventory_asset, cogs, income, etc.).</div>
-          <div id="qbd-accounts-table"></div>
-          <div style="margin-top:12px;">
-            <h5>Add/Update Account</h5>
-            <div class="row" style="gap:8px; margin-bottom:8px;">
-              <input id="qbd-name" placeholder="Account Name" />
-              <input id="qbd-role" placeholder="Role (e.g., inventory_asset)" />
-              <input id="qbd-type" placeholder="Type (optional)" />
-              <label><input type="checkbox" id="qbd-active" checked /> Active</label>
-              <button id="qbd-save" class="btn success">Save</button>
+        <!-- Configuration Tab -->
+        <div class="tab-content active" id="config">
+          <div class="config-section">
+            <div class="config-header">
+              <h3>QuickBooks Configuration</h3>
             </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Import History Content -->
-      <div id="imports-content" class="card hidden">
-        <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
-          <h3>Import History</h3>
-          <div style="display:flex; gap:8px;">
-            <button id="refresh-imports" class="btn secondary">Refresh</button>
-            <button id="view-imports-metadata" class="btn secondary">View Raw Imports</button>
-          </div>
-        </div>
-        <div id="imports-table"></div>
-        <div id="imports-metadata" class="card hidden" style="margin-top:16px;">
-          <h4>Raw Import Metadata</h4>
-          <div id="imports-metadata-table"></div>
-        </div>
-      </div>
-      
-      <!-- Export History Content -->
-      <div id="exports-content" class="card hidden">
-        <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
-          <h3>Export History</h3>
-          <button id="refresh-exports" class="btn secondary">Refresh</button>
-        </div>
-        <div id="exports-table"></div>
-      </div>
-      
-      <div id="ledger-content" class="card hidden">
-        <div class="row" style="justify-content: space-between; margin-bottom: 16px;">
-          <h3>Ledger (Recent)</h3>
-          <button id="refresh-ledger" class="btn secondary">Refresh</button>
-        </div>
-        <div id="ledger-table"></div>
-      </div>
-      
-      <!-- QuickBooks Web Connector Configuration -->
-      <div id="qbwc-content" class="card">
-        <h3>🔌 QuickBooks Web Connector Setup</h3>
-        <div class="muted" style="margin-bottom: 16px;">
-          Configure credentials and download the configuration file to sync with QuickBooks Desktop.
-        </div>
-        
-        <!-- QBWC Configuration Form -->
-        <div id="qbwc-config-form" class="card" style="background: #f8fafc; margin-bottom: 16px;">
-          <h4>⚙️ QBWC Configuration</h4>
-          <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
-            <div>
-              <label for="qbwc-app-name">App Name:</label>
-              <input type="text" id="qbwc-app-name" placeholder="Application name in QBWC">
-            </div>
-            <div>
-              <label for="qbwc-username">Username:</label>
-              <input type="text" id="qbwc-username" placeholder="Authentication username">
-            </div>
-            <div>
-              <label for="qbwc-password">Password:</label>
-              <input type="password" id="qbwc-password" placeholder="Authentication password">
-            </div>
-            <div>
-              <label for="qbwc-interval">Sync Interval (minutes):</label>
-              <input type="number" id="qbwc-interval" min="1" max="1440" value="30">
-            </div>
-          </div>
-          <div style="margin-top: 16px;">
-            <button id="save-qbwc-config" class="btn success">💾 Save Configuration</button>
-            <button id="reset-qbwc-config" class="btn secondary">🔄 Reset to Defaults</button>
-          </div>
-        </div>
-        
-        <div class="action-buttons" style="margin-bottom: 16px;">
-          <button id="download-qwc" class="btn success">📁 Download QWC Configuration File</button>
-          <button id="check-qbwc-status" class="btn secondary">🔄 Check QBWC Status</button>
-          <button id="check-ssl-status" class="btn warning">🔒 Check SSL Status</button>
-        </div>
-        
-        <!-- SSL Troubleshooting Information -->
-        <div id="ssl-info" style="display: none;" class="card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
-          <h4>🔒 SSL Certificate Troubleshooting</h4>
-          <div id="ssl-status-content"></div>
-          <div style="margin-top: 12px;">
-            <strong>QuickBooks SSL Requirements:</strong>
-            <ul style="margin: 8px 0 0 0; padding-left: 20px;">
-              <li>✅ Valid SSL certificate from trusted Certificate Authority</li>
-              <li>❌ Self-signed certificates often cause verification errors</li>
-              <li>✅ Cloudflare tunnels usually work (provides valid SSL)</li>
-              <li>❌ Localhost HTTP will fail certificate verification</li>
-            </ul>
-            <div style="margin-top: 12px;">
-              <strong>Solutions:</strong>
-              <ol style="margin: 8px 0 0 0; padding-left: 20px;">
-                <li>Use the Cloudflare tunnel URL: <code>https://qbd-msp.dev.dtctoday.com</code></li>
-                <li>In QBWC error dialog, click "Yes" to accept the certificate</li>
-                <li>Add certificate to Windows Trusted Root store</li>
-                <li>Use a domain with valid SSL certificate</li>
-              </ol>
-            </div>
-          </div>
-        </div>
-        
-        <div id="qbwc-info" style="display: none;">
-          <div class="card" style="background: #f0f9ff; border-left: 4px solid #0369a1;">
-            <h4>📋 QuickBooks Web Connector Information</h4>
-            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
-              <div>
-                <strong>Server Status:</strong> <span id="qbwc-status">-</span>
+            <form id="qbConfigForm">
+              <div class="form-group">
+                <label for="qbwc_username">QBWC Username</label>
+                <input type="text" id="qbwc_username" name="qbwc_username">
               </div>
-              <div>
-                <strong>QBWC Endpoint:</strong> <a href="#" id="qbwc-endpoint-link" target="_blank">-</a>
+              <div class="form-group">
+                <label for="qbwc_password">QBWC Password</label>
+                <input type="password" id="qbwc_password" name="qbwc_password">
               </div>
-              <div>
-                <strong>Test Username:</strong> <code id="qbwc-username-display">-</code>
+              <div class="form-group">
+                <label for="quickbooks_default_account">Default Account</label>
+                <input type="text" id="quickbooks_default_account" name="quickbooks_default_account">
               </div>
-              <div>
-                <strong>Test Password:</strong> <code id="qbwc-password-display">-</code>
-              </div>
-            </div>
-            <div style="margin-top: 12px;">
-              <strong>Instructions:</strong>
-              <ol style="margin: 8px 0 0 0; padding-left: 20px;">
-                <li>Configure credentials above or use defaults</li>
-                <li>Download the QWC file (auto-updates with settings)</li>
-                <li>Launch QuickBooks Desktop (2024 or newer)</li>
-                <li>Open QuickBooks Web Connector</li>
-                <li>Add application using the downloaded QWC file</li>
-                <li>Use the configured credentials</li>
-              </ol>
-            </div>
+              <button type="submit" class="btn">Save QB Configuration</button>
+            </form>
           </div>
         </div>
-      </div>
-    </div>
-    
-    <script>
-      // API wrapper for the web app (replaces Electron's window.api)
-      const apiBase = '';
-      async function jsonFetch(url, options = {}) {
-        const res = await fetch(apiBase + url, {
-          headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-          credentials: 'same-origin',
-          ...options
-        });
-        const ct = res.headers.get('content-type') || '';
-        if (!res.ok) {
-          let msg = res.statusText;
-          if (ct.includes('application/json')) {
-            const data = await res.json().catch(() => null);
-            if (data && data.error) msg = data.error;
-          } else {
-            const text = await res.text().catch(() => '');
-            if (text) msg = text;
-          }
-          throw new Error(msg || `HTTP ${res.status}`);
-        }
-        return ct.includes('application/json') ? res.json() : res.text();
-      }
-      function downloadBlob(blob, filename) {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-      }
-      function humanizeType(t){
-        const map={ po_bills:'Purchase Orders', halo_invoices:'Halo Invoices', bank_batch:'Bank Batch (FNBPA)', bank_generic:'Bank Transactions', stripe_csv:'Stripe CSV', unknown:'Unknown' };
-        return map[t]||t;
-      }
-
-      window.api = {
-        async dropCsv(content, filename) {
-          return jsonFetch('/api/drop-csv', {
-            method: 'POST',
-            body: JSON.stringify({ content, filename })
-          });
-        },
-        async processImport(importId, bills) {
-          return jsonFetch('/api/process-import', {
-            method: 'POST',
-            body: JSON.stringify({ importId, bills })
-          });
-        },
-        async exportIif(bills, suggestedName = 'bills_output.iif', transactionIds = []) {
-          const res = await fetch(apiBase + '/api/export-iif', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bills, suggestedName, transactionIds })
-          });
-          if (!res.ok) {
-            const txt = await res.text().catch(() => res.statusText);
-            throw new Error(txt || `HTTP ${res.status}`);
-          }
-          const blob = await res.blob();
-          downloadBlob(blob, suggestedName);
-          return { saved: true };
-        },
-        async getDashboardStats() { return jsonFetch('/api/dashboard-stats'); },
-        async getRecentTransactions(hours = 24) { return jsonFetch(`/api/recent-transactions?hours=${encodeURIComponent(hours)}`); },
-        async getAllTransactions() { return jsonFetch('/api/all-transactions'); },
-        async getInventorySummary() { return jsonFetch('/api/inventory-summary'); },
-        async getInventoryForExport() { return jsonFetch('/api/inventory-for-export'); },
-        async getImportHistory() { return jsonFetch('/api/import-history'); },
-        async getExportHistory() { return jsonFetch('/api/export-history'); },
-        async getItemTransactions(itemId) { return jsonFetch(`/api/item-transactions/${encodeURIComponent(itemId)}`); },
-        async getQbdAccounts() { return jsonFetch('/api/qbd/accounts'); },
-        async upsertQbdAccount(payload) { return jsonFetch('/api/qbd/accounts', { method: 'POST', body: JSON.stringify(payload) }); },
-        async setDefaultQbdAccount(role, accountId) { return jsonFetch('/api/qbd/accounts/default', { method: 'POST', body: JSON.stringify({ role, accountId }) }); }
-      };
-
-      const state = { 
-        currentImportId: null,
-        currentBills: [],
-        dashboardStats: null,
-        currentDetectedType: null,
-        lastImportMetaId: null
-      };
-
-      // Initialize dashboard
-      document.addEventListener('DOMContentLoaded', () => {
-        loadDashboard();
-        setupEventListeners();
-      });
-
-      function setupEventListeners() {
-        // Tab switching
-        document.getElementById('tab-dashboard').addEventListener('click', () => showTab('dashboard'));
-        document.getElementById('tab-transactions').addEventListener('click', () => showTab('transactions'));
-        document.getElementById('tab-inventory').addEventListener('click', () => showTab('inventory'));
-        document.getElementById('tab-imports').addEventListener('click', () => showTab('imports'));
-        document.getElementById('tab-exports').addEventListener('click', () => showTab('exports'));
-        document.getElementById('tab-ledger').addEventListener('click', () => showTab('ledger'));
         
-        // Action buttons
-        document.getElementById('import-btn').addEventListener('click', () => document.getElementById('file').click());
-        document.getElementById('export-btn').addEventListener('click', () => exportRecentData(24));
-        document.getElementById('export-24h').addEventListener('click', () => exportRecentData(24));
-        document.getElementById('refresh-dashboard').addEventListener('click', loadDashboard);
-        
-        // File handling
-        document.getElementById('file').addEventListener('change', handleFileSelect);
-        document.getElementById('confirm-import').addEventListener('click', confirmImport);
-        document.getElementById('cancel-import').addEventListener('click', cancelImport);
-        
-        // Refresh buttons
-        document.getElementById('refresh-transactions').addEventListener('click', loadTransactions);
-        document.getElementById('refresh-inventory').addEventListener('click', loadInventory);
-        document.getElementById('refresh-imports').addEventListener('click', loadImportHistory);
-        document.getElementById('refresh-exports').addEventListener('click', loadExportHistory);
-        document.getElementById('refresh-ledger').addEventListener('click', loadLedger);
-        document.getElementById('qbd-config').addEventListener('click', toggleQbdConfig);
-        document.getElementById('view-imports-metadata').addEventListener('click', toggleImportsMetadata);
-        
-        // Drag and drop
-        setupDragAndDrop();
-      }
-
-      function showTab(tabName) {
-        // Hide all content
-        document.querySelectorAll('.card[id$="-content"]').forEach(el => el.classList.add('hidden'));
-        document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
-        
-        // Show selected tab
-        document.getElementById(`tab-${tabName}`).classList.add('active');
-        document.getElementById(`${tabName}-content`).classList.remove('hidden');
-        
-        // Load data for tab
-        switch(tabName) {
-          case 'dashboard':
-            loadDashboard();
-            break;
-          case 'transactions':
-            loadTransactions();
-            break;
-          case 'inventory':
-            loadInventory();
-            break;
-          case 'imports':
-            loadImportHistory();
-            break;
-          case 'exports':
-            loadExportHistory();
-            break;
-          case 'ledger':
-            loadLedger();
-            break;
-        }
-      }
-
-      async function loadDashboard() {
-        try {
-          const stats = await window.api.getDashboardStats();
-          if (stats.error) {
-            console.error('Error loading dashboard stats:', stats.error);
-            return;
-          }
-          
-          state.dashboardStats = stats;
-          
-          // Update stats display
-          document.getElementById('total-transactions').textContent = stats.totalTransactions || 0;
-          document.getElementById('total-inventory').textContent = stats.totalInventoryItems || 0;
-          document.getElementById('total-value').textContent = `$${(stats.totalInventoryValue || 0).toFixed(2)}`;
-          document.getElementById('recent-transactions').textContent = stats.recentTransactions || 0;
-          
-          // Load recent activity
-          await loadRecentActivity();
-        } catch (err) {
-          console.error('Error loading dashboard:', err);
-        }
-      }
-
-      async function loadRecentActivity() {
-        try {
-          const recent = await window.api.getRecentTransactions(24);
-          if (recent.error) {
-            document.getElementById('recent-activity').innerHTML = `<div class="muted">Error loading recent activity: ${recent.error}</div>`;
-            return;
-          }
-          
-          if (!recent.length) {
-            document.getElementById('recent-activity').innerHTML = '<div class="muted">No recent activity</div>';
-            return;
-          }
-          
-          const activityHtml = recent.map(t => `
-            <div style="padding: 12px 0; border-bottom: 1px solid #f3f4f6;">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                  <strong>${t.vendor}</strong> - ${t.ref_number}
-                  <div class="muted">${t.transaction_date} • ${t.items || 'No items'}</div>
-                </div>
-                <div style="font-weight: 600; color: #059669;">
-                  $${Number(t.total_amount).toFixed(2)}
-                </div>
-              </div>
+        <!-- Stripe Integration Tab -->
+        <div class="tab-content" id="stripe">
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Stripe API Configuration</h3>
             </div>
-          `).join('');
-          
-          document.getElementById('recent-activity').innerHTML = activityHtml;
-        } catch (err) {
-          console.error('Error loading recent activity:', err);
-        }
-      }
-
-      async function handleFileSelect(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        try {
-          const text = await file.text();
-          const result = await window.api.dropCsv(text, file.name);
-          
-          if (result.error) {
-            if (result.isDuplicate) {
-              showDuplicateWarning(result.error, result.importId);
-            } else {
-              alert('Error processing file: ' + result.error + (result.detectedType?`\nDetected: ${result.detectedType}`:''));
-            }
-            return;
-          }
-          
-          state.currentDetectedType = result.detectedType || 'po_bills';
-          state.lastImportMetaId = result.import_meta_id || null;
-          if ((result.detectedType || 'po_bills') === 'po_bills') {
-            state.currentImportId = result.importId;
-            state.currentBills = result.bills;
-            showImportPreview(result.bills);
-          } else {
-            showOtherImportResult(result);
-          }
-          
-        } catch (err) {
-          alert('Error reading file: ' + err.message);
-        }
-        
-        // Reset file input
-        e.target.value = '';
-      }
-
-      function showImportPreview(bills) {
-        const preview = document.getElementById('import-preview');
-        const content = document.getElementById('preview-content');
-        
-        const summary = bills.reduce((acc, bill) => {
-          acc.totalAmount += bill.total_amount;
-          acc.totalItems += bill.lines.length;
-          return acc;
-        }, { totalAmount: 0, totalItems: 0 });
-        
-        content.innerHTML = `
-          <div style="margin-bottom: 16px;">
-            <strong>Detected: ${humanizeType(state.currentDetectedType || 'po_bills')}</strong><br>
-            <strong>Found ${bills.length} transactions with ${summary.totalItems} line items</strong><br>
-            <span class="muted">Total value: $${summary.totalAmount.toFixed(2)}</span>
-          </div>
-          <div style="max-height: 300px; overflow-y: auto;">
-            ${bills.map((bill, i) => `
-              <div style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
-                <div><strong>${i + 1}. ${bill.vendor}</strong> - ${bill.ref_num}</div>
-                <div class="muted">${bill.date} • $${bill.total_amount.toFixed(2)}</div>
-                <div style="font-size: 0.875rem; margin-top: 4px;">
-                  ${bill.lines.map(l => `${l.item} x${l.quantity}`).join(', ')}
-                </div>
+            <form id="stripeConfigForm">
+              <div class="form-group">
+                <label for="stripe_secret_key">Stripe Secret Key</label>
+                <input type="password" id="stripe_secret_key" name="stripe_secret_key" placeholder="sk_live_...">
               </div>
-            `).join('')}
+              <div class="form-group">
+                <label for="stripe_webhook_secret">Webhook Secret</label>
+                <input type="password" id="stripe_webhook_secret" name="stripe_webhook_secret">
+              </div>
+              <div class="form-group">
+                <label for="stripe_sync_enabled">Enable Stripe Sync</label>
+                <select id="stripe_sync_enabled" name="stripe_sync_enabled">
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="stripe_sync_interval">Sync Interval (minutes)</label>
+                <input type="number" id="stripe_sync_interval" name="stripe_sync_interval" min="5" max="1440">
+              </div>
+              <div class="actions">
+                <button type="submit" class="btn">Save Stripe Config</button>
+                <button type="button" class="btn secondary" id="testStripe">Test Connection</button>
+                <button type="button" class="btn success" id="syncStripeNow">Sync Now</button>
+              </div>
+            </form>
           </div>
-        `;
-        
-        preview.classList.remove('hidden');
-        document.getElementById('other-import-result').classList.add('hidden');
-        hideMessages();
-      }
-
-      function showOtherImportResult(result) {
-        // Hide PO preview widgets
-        hideImportPreview();
-        hideMessages();
-        const box = document.getElementById('other-import-result');
-        const title = document.getElementById('other-import-title');
-        const details = document.getElementById('other-import-details');
-        const t = humanizeType(result.detectedType || 'unknown');
-        title.textContent = `✅ Imported ${t}`;
-        let html = '';
-        if (typeof result.imported === 'number') {
-          html += `<div><strong>Imported:</strong> ${result.imported} records</div>`;
-        }
-        if (result.import_meta_id) {
-          html += `<div class="muted">Import Ref: ${result.import_meta_id}</div>`;
-        }
-        if (result.isDuplicate) {
-          html += `<div class="muted">Duplicate detected; using existing import ref ${result.importId}</div>`;
-        }
-        if (t === 'Bank Transactions' || t === 'Bank Batch (FNBPA)') {
-          html += `<div>Data is available under the Ledger and will appear in Recent Activity.</div>`;
-        } else if (t === 'Halo Invoices') {
-          html += `<div>Invoices have been imported and linked to clients. View under Transactions or future Invoices tab.</div>`;
-        }
-        details.innerHTML = html || `<div class="muted">Completed.</div>`;
-        box.classList.remove('hidden');
-      }
-
-      function showDuplicateWarning(message, importId) {
-        document.getElementById('duplicate-message').textContent = message;
-        document.getElementById('duplicate-warning').classList.remove('hidden');
-        hideImportPreview();
-        hideMessages();
-      }
-
-      function hideImportPreview() {
-        document.getElementById('import-preview').classList.add('hidden');
-      }
-
-      function hideMessages() {
-        document.getElementById('duplicate-warning').classList.add('hidden');
-        document.getElementById('success-message').classList.add('hidden');
-      }
-
-      async function confirmImport() {
-        if (!state.currentImportId || !state.currentBills.length) return;
-        
-        try {
-          const result = await window.api.processImport(state.currentImportId, state.currentBills);
           
-          if (result.error) {
-            alert('Error processing import: ' + result.error);
-            return;
-          }
-          
-          // Show success message
-          document.getElementById('success-details').textContent = 
-            `Successfully imported ${state.currentBills.length} transactions`;
-          document.getElementById('success-message').classList.remove('hidden');
-          
-          // Hide preview and reset state
-          hideImportPreview();
-          state.currentImportId = null;
-          state.currentBills = [];
-          
-          // Refresh dashboard
-          await loadDashboard();
-          
-        } catch (err) {
-          alert('Error confirming import: ' + err.message);
-        }
-      }
-
-      function cancelImport() {
-        hideImportPreview();
-        hideMessages();
-        state.currentImportId = null;
-        state.currentBills = [];
-      }
-
-      async function exportRecentData(hours) {
-        try {
-          const transactions = await window.api.getRecentTransactions(hours);
-          if (transactions.error) {
-            alert('Error loading recent transactions: ' + transactions.error);
-            return;
-          }
-          
-          if (!transactions.length) {
-            alert('No transactions found in the last ' + hours + ' hours');
-            return;
-          }
-          
-          // Convert to bills format for export and collect transaction IDs
-          const transactionIds = transactions.map(t => t.id);
-          const bills = transactions.map(t => ({
-            vendor: t.vendor,
-            ref_num: t.ref_number,
-            date: t.transaction_date,
-            total_amount: t.total_amount,
-            terms: t.payment_terms || 'Due upon receipt',
-            due_date: t.due_date || t.transaction_date,
-            lines: []
-          }));
-          
-          await window.api.exportIif(bills, `recent_${hours}h_export.iif`, transactionIds);
-          
-        } catch (err) {
-          alert('Error exporting recent data: ' + err.message);
-        }
-      }
-
-      function showExportOptions() {
-        document.getElementById('export-modal').classList.remove('hidden');
-        // Reset checkboxes
-        document.getElementById('export-transactions').checked = true;
-        document.getElementById('export-inventory').checked = false;
-        document.getElementById('export-both').checked = false;
-      }
-      
-      function hideExportModal() {
-        document.getElementById('export-modal').classList.add('hidden');
-      }
-      
-      function handleExportOptionChange() {
-        const transactions = document.getElementById('export-transactions').checked;
-        const inventory = document.getElementById('export-inventory').checked;
-        const both = document.getElementById('export-both').checked;
-        
-        // If "both" is selected, check both individual options
-        if (both) {
-          document.getElementById('export-transactions').checked = true;
-          document.getElementById('export-inventory').checked = true;
-        }
-        
-        // If both individual options are checked, check "both"
-        if (transactions && inventory) {
-          document.getElementById('export-both').checked = true;
-        }
-        
-        // If neither individual option is checked, uncheck "both"
-        if (!transactions && !inventory) {
-          document.getElementById('export-both').checked = false;
-        }
-      }
-      
-      async function handleExportSelection() {
-        const exportTransactions = document.getElementById('export-transactions').checked;
-        const exportInventory = document.getElementById('export-inventory').checked;
-        
-        if (!exportTransactions && !exportInventory) {
-          alert('Please select at least one export option');
-          return;
-        }
-        
-        hideExportModal();
-        
-        try {
-          if (exportTransactions) {
-            await exportTransactionsData();
-          }
-          
-          if (exportInventory) {
-            await exportInventoryData();
-          }
-          
-          alert('Export completed successfully!');
-        } catch (err) {
-          alert('Error during export: ' + err.message);
-        }
-      }
-      
-      async function exportTransactionsData() {
-        try {
-          const transactions = await window.api.getAllTransactions();
-          if (transactions.error) {
-            throw new Error('Error loading transactions: ' + transactions.error);
-          }
-          
-          if (!transactions.length) {
-            throw new Error('No transactions found to export');
-          }
-          
-          // Convert to bills format for export and collect transaction IDs
-          const transactionIds = transactions.map(t => t.id);
-          const bills = transactions.map(t => ({
-            vendor: t.vendor,
-            ref_num: t.ref_number,
-            date: t.transaction_date,
-            total_amount: t.total_amount,
-            terms: t.payment_terms || 'Due upon receipt',
-            due_date: t.due_date || t.transaction_date,
-            lines: []
-          }));
-          
-          await window.api.exportIif(bills, `transactions_export_${new Date().toISOString().split('T')[0]}.iif`, transactionIds);
-          
-        } catch (err) {
-          throw new Error('Error exporting transactions: ' + err.message);
-        }
-      }
-      
-      async function exportInventoryData() {
-        try {
-          const inventory = await window.api.getInventoryForExport();
-          if (inventory.error) {
-            throw new Error('Error loading inventory: ' + inventory.error);
-          }
-          
-          if (!inventory.length) {
-            throw new Error('No inventory items found to export');
-          }
-          
-          // Create CSV content for inventory
-          const csvContent = [
-            'Item Name,Description,Current Quantity,Total Received,Total Cost,Average Unit Cost,Last Transaction Date,Last Vendor,Vendors,Transaction Dates,Transaction Count',
-            ...inventory.map(item => [
-              `"${item.item_name}"`,
-              `"${item.description || ''}"`,
-              item.current_quantity,
-              item.total_received,
-              item.total_cost,
-              item.average_unit_cost,
-              `"${item.last_transaction_date || ''}"`,
-              `"${item.last_vendor || ''}"`,
-              `"${item.vendors || ''}"`,
-              `"${item.transaction_dates || ''}"`,
-              item.transaction_count
-            ].join(','))
-          ].join('\n');
-          
-          // Create and download CSV file
-          const blob = new Blob([csvContent], { type: 'text/csv' });
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `inventory_export_${new Date().toISOString().split('T')[0]}.csv`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          window.URL.revokeObjectURL(url);
-          
-        } catch (err) {
-          throw new Error('Error exporting inventory: ' + err.message);
-        }
-      }
-      
-      async function exportAllData() {
-        try {
-          await exportTransactionsData();
-          await exportInventoryData();
-          alert('All data exported successfully!');
-        } catch (err) {
-          alert('Error exporting all data: ' + err.message);
-        }
-      }
-
-      async function loadTransactions() {
-        try {
-          const transactions = await window.api.getAllTransactions();
-          if (transactions.error) {
-            document.getElementById('transactions-table').innerHTML = `<div class="muted">Error: ${transactions.error}</div>`;
-            return;
-          }
-          
-          if (!transactions.length) {
-            document.getElementById('transactions-table').innerHTML = '<div class="muted">No transactions found</div>';
-            return;
-          }
-          
-          const table = `
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Vendor</th>
-                  <th>Ref #</th>
-                  <th>Amount</th>
-                  <th>Items</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${transactions.map(t => `
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Recent Stripe Transactions</h3>
+            </div>
+            <div id="stripeTransactions">
+              <table class="table">
+                <thead>
                   <tr>
-                    <td>${t.transaction_date}</td>
-                    <td><strong>${t.vendor}</strong></td>
-                    <td>${t.ref_number}</td>
-                    <td style="text-align: right; font-weight: 600;">$${Number(t.total_amount).toFixed(2)}</td>
-                    <td>${t.items || '-'}</td>
-                    <td class="muted">${new Date(t.created_at).toLocaleDateString()}</td>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Mapped</th>
+                    <th>Actions</th>
                   </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          `;
-          
-          document.getElementById('transactions-table').innerHTML = table;
-        } catch (err) {
-          document.getElementById('transactions-table').innerHTML = `<div class="muted">Error loading transactions: ${err.message}</div>`;
-        }
-      }
-
-      async function loadInventory() {
-        try {
-          const inventory = await window.api.getInventorySummary();
-          if (inventory.error) {
-            document.getElementById('inventory-table').innerHTML = `<div class="muted">Error: ${inventory.error}</div>`;
-            return;
-          }
-          
-          if (!inventory.length) {
-            document.getElementById('inventory-table').innerHTML = '<div class="muted">No inventory items found</div>';
-            return;
-          }
-          
-          const table = `
-            <table>
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Current Qty</th>
-                  <th>Total Received</th>
-                  <th>Total Cost</th>
-                  <th>Avg Unit Cost</th>
-                  <th>Last Vendor</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${inventory.map(item => `
-                  <tr>
-                    <td>
-                      <strong>${item.item_name}</strong><br>
-                      <span class="muted">${item.description || ''}</span>
-                    </td>
-                    <td style="text-align: center;">${item.current_quantity}</td>
-                    <td style="text-align: center;">${item.total_received}</td>
-                    <td style="text-align: right;">$${Number(item.total_cost).toFixed(2)}</td>
-                    <td style="text-align: right;">$${Number(item.average_unit_cost).toFixed(2)}</td>
-                    <td>${item.last_vendor || '-'}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          `;
-          
-          document.getElementById('inventory-table').innerHTML = table;
-        } catch (err) {
-          document.getElementById('inventory-table').innerHTML = `<div class="muted">Error loading inventory: ${err.message}</div>`;
-        }
-      }
-
-      async function loadImportHistory() {
-        try {
-          const imports = await window.api.getImportHistory();
-          if (imports.error) {
-            document.getElementById('imports-table').innerHTML = `<div class="muted">Error: ${imports.error}</div>`;
-            return;
-          }
-          
-          if (!imports.length) {
-            document.getElementById('imports-table').innerHTML = '<div class="muted">No import history found</div>';
-            return;
-          }
-          
-          const table = `
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Filename</th>
-                  <th>Status</th>
-                  <th>Transactions</th>
-                  <th>Total Amount</th>
-                  <th>File Size</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${imports.map(imp => `
-                  <tr>
-                    <td>${new Date(imp.import_date).toLocaleDateString()}</td>
-                    <td><strong>${imp.filename}</strong></td>
-                    <td>
-                      <span style="color: ${imp.processed ? '#059669' : '#f59e0b'}; font-weight: 600;">
-                        ${imp.processed ? '✓ Processed' : '⏳ Pending'}
-                      </span>
-                    </td>
-                    <td style="text-align: center;">${imp.transaction_count || 0}</td>
-                    <td style="text-align: right;">$${(imp.total_amount || 0).toFixed(2)}</td>
-                    <td class="muted">${(imp.file_size / 1024).toFixed(1)} KB</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          `;
-          
-          document.getElementById('imports-table').innerHTML = table;
-        } catch (err) {
-          document.getElementById('imports-table').innerHTML = `<div class="muted">Error loading import history: ${err.message}</div>`;
-        }
-      }
-
-      async function loadExportHistory() {
-        try {
-          const exports = await window.api.getExportHistory();
-          if (exports.error) {
-            document.getElementById('exports-table').innerHTML = `<div class="muted">Error: ${exports.error}</div>`;
-            return;
-          }
-          
-          if (!exports.length) {
-            document.getElementById('exports-table').innerHTML = '<div class="muted">No export history found</div>';
-            return;
-          }
-          
-          const table = `
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Filename</th>
-                  <th>Transactions</th>
-                  <th>Total Amount</th>
-                  <th>File Path</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${exports.map(exp => `
-                  <tr>
-                    <td>${new Date(exp.export_date).toLocaleDateString()}</td>
-                    <td><strong>${exp.filename}</strong></td>
-                    <td style="text-align: center;">${exp.transaction_count}</td>
-                    <td style="text-align: right;">$${Number(exp.total_amount).toFixed(2)}</td>
-                    <td class="muted" style="font-family: monospace; font-size: 12px;">${exp.file_path}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          `;
-          
-          document.getElementById('exports-table').innerHTML = table;
-        } catch (err) {
-          document.getElementById('exports-table').innerHTML = `<div class="muted">Error loading export history: ${err.message}</div>`;
-        }
-      }
-
-      function setupDragAndDrop() {
-        const dz = document.getElementById('dz');
+                </thead>
+                <tbody id="transactionsTable">
+                  <!-- Transactions will be loaded here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
         
-        dz.addEventListener('dragover', (e) => { 
-          e.preventDefault(); 
-          dz.classList.add('dragover');
-        });
-        
-        dz.addEventListener('dragleave', () => { 
-          dz.classList.remove('dragover');
-        });
-        
-        dz.addEventListener('drop', async (e) => {
-          e.preventDefault(); 
-          dz.classList.remove('dragover');
+        <!-- Customer Mapping Tab -->
+        <div class="tab-content" id="mapping">
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Customer Mapping Tool</h3>
+            </div>
+            <div class="mapping-section">
+              <div class="customer-list" id="stripeCustomers">
+                <h4>Stripe Customers</h4>
+                <!-- Stripe customers will be listed here -->
+              </div>
+              <div class="customer-list" id="haloCustomers">
+                <h4>HaloPSA Clients</h4>
+                <!-- HaloPSA clients will be listed here -->
+              </div>
+            </div>
+            <div class="actions" style="margin-top: 20px;">
+              <button class="btn" id="loadStripeCustomers">Load Stripe Customers</button>
+              <button class="btn" id="loadHaloCustomers">Load HaloPSA Clients</button>
+              <button class="btn success" id="autoMatch">Auto-match</button>
+              <button class="btn primary" id="saveMappings">Save Mappings</button>
+            </div>
+            <div id="mappingResults" style="margin-top: 20px;">
+              <!-- Auto-match results will be shown here -->
+            </div>
+          </div>
           
-          const file = e.dataTransfer.files[0];
-          if (!file) return;
-          
-          try {
-            const text = await file.text();
-            const result = await window.api.dropCsv(text, file.name);
-            
-            if (result.error) {
-              if (result.isDuplicate) {
-                showDuplicateWarning(result.error, result.importId);
-              } else {
-                alert('Error processing file: ' + result.error + (result.detectedType?`\nDetected: ${result.detectedType}`:''));
-              }
-              return;
-            }
-            
-            state.currentDetectedType = result.detectedType || 'po_bills';
-            state.lastImportMetaId = result.import_meta_id || null;
-            if ((result.detectedType || 'po_bills') === 'po_bills') {
-              state.currentImportId = result.importId;
-              state.currentBills = result.bills;
-              showImportPreview(result.bills);
-            } else {
-              showOtherImportResult(result);
-            }
-            
-          } catch (err) {
-            alert('Error reading file: ' + err.message);
-          }
-        });
-        
-        // Prevent default browser behavior on global drag/drop
-        window.addEventListener('dragover', (e) => e.preventDefault());
-        window.addEventListener('drop', (e) => e.preventDefault());
-      }
-      async function loadLedger() {
-        try {
-          const rows = await jsonFetch('/api/ledger?limit=200');
-          if (!rows.length) {
-            document.getElementById('ledger-table').innerHTML = '<div class="muted">No ledger entries found</div>';
-            return;
-          }
-          const table = `
-            <table>
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Existing Mappings</h3>
+            </div>
+            <table class="table">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Type</th>
-                  <th>Source</th>
-                  <th>Description</th>
-                  <th>Counterparty</th>
-                  <th>Status</th>
-                  <th>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows.map(r => `
-                  <tr>
-                    <td>${r.txn_date ? new Date(r.txn_date).toLocaleDateString() : ''}</td>
-                    <td>${r.txn_type}</td>
-                    <td>${r.source_name || '-'}</td>
-                    <td>${r.description || '-'}</td>
-                    <td>${r.counterparty || '-'}</td>
-                    <td>${r.status || '-'}</td>
-                    <td style=\"text-align:right;\">$${Number(r.amount || 0).toFixed(2)}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          `;
-          document.getElementById('ledger-table').innerHTML = table;
-        } catch (err) {
-          document.getElementById('ledger-table').innerHTML = `<div class="muted">Error loading ledger: ${err.message}</div>`;
-        }
-      }
-
-      async function toggleQbdConfig() {
-        const panel = document.getElementById('qbd-config-panel');
-        if (!panel) return;
-        if (!panel.classList.contains('hidden')) { panel.classList.add('hidden'); return; }
-        await renderQbdAccounts();
-        panel.classList.remove('hidden');
-      }
-
-      async function renderQbdAccounts() {
-        try {
-          const rows = await window.api.getQbdAccounts();
-          const html = `
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Role</th>
-                  <th>Type</th>
-                  <th>Default</th>
-                  <th>Active</th>
+                  <th>Stripe Customer</th>
+                  <th>HaloPSA Client</th>
+                  <th>Match Type</th>
                   <th>Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                ${rows.map(r => `
-                  <tr>
-                    <td>${r.name}</td>
-                    <td>${r.role || '-'}</td>
-                    <td>${r.account_type || '-'}</td>
-                    <td>${r.is_default ? '✓' : '-'}</td>
-                    <td>${r.active ? '✓' : '-'}</td>
-                    <td>
-                      ${r.role ? `<button class="btn secondary" onclick=\"setDefaultRole('${r.role}', ${r.id})\">Set Default</button>` : ''}
-                    </td>
-                  </tr>
-                `).join('')}
+              <tbody id="mappingsTable">
+                <!-- Existing mappings will be loaded here -->
               </tbody>
             </table>
-          `;
-          document.getElementById('qbd-accounts-table').innerHTML = html;
+          </div>
+        </div>
+        
+        <!-- System Status Tab -->
+        <div class="tab-content" id="status">
+          <div class="config-section">
+            <div class="config-header">
+              <h3>System Status</h3>
+            </div>
+            <div id="systemStatus">
+              <div class="status info">
+                <strong>QuickBooks Web Connector:</strong> <span id="qbwcStatus">Checking...</span>
+              </div>
+              <div class="status info">
+                <strong>Stripe Integration:</strong> <span id="stripeStatus">Checking...</span>
+              </div>
+              <div class="status info">
+                <strong>HaloPSA Connection:</strong> <span id="halopsaStatus">Checking...</span>
+              </div>
+              <div class="status info">
+                <strong>Database:</strong> <span id="dbStatus">Checking...</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Recent Activity</h3>
+            </div>
+            <div id="activityLog">
+              <!-- Activity log will be populated here -->
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="statusMessage" class="status" style="display: none;"></div>
+    </div>
 
-          const saveBtn = document.getElementById('qbd-save');
-          if (saveBtn) {
-            saveBtn.onclick = async () => {
-              const name = document.getElementById('qbd-name').value.trim();
-              const role = document.getElementById('qbd-role').value.trim() || null;
-              const type = document.getElementById('qbd-type').value.trim() || null;
-              const active = document.getElementById('qbd-active').checked;
-              if (!name) { alert('Enter account name'); return; }
-              await window.api.upsertQbdAccount({ name, role, account_type: type, active });
-              await renderQbdAccounts();
-            };
-          }
-        } catch (err) {
-          document.getElementById('qbd-accounts-table').innerHTML = `<div class="muted">Error: ${err.message}</div>`;
-        }
-      }
-
-      window.setDefaultRole = async function(role, id) {
-        try {
-          await window.api.setDefaultQbdAccount(role, id);
-          await renderQbdAccounts();
-        } catch (err) {
-          alert('Error setting default: ' + err.message);
-        }
-      }
-
-      async function toggleImportsMetadata() {
-        const box = document.getElementById('imports-metadata');
-        if (!box) return;
-        if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
-        try {
-          const data = await jsonFetch('/api/imports-metadata?limit=100');
-          if (!data.length) {
-            document.getElementById('imports-metadata-table').innerHTML = '<div class="muted">No raw imports found</div>';
-            box.classList.remove('hidden');
-            return;
-          }
-          const table = `
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Source</th>
-                  <th>Type</th>
-                  <th>File</th>
-                  <th>Rows</th>
-                  <th>Date</th>
-                  <th>View</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${data.map(m => `
-                  <tr>
-                    <td>${m.id}</td>
-                    <td>${m.source_name || '-'}</td>
-                    <td>${m.import_type}</td>
-                    <td>${m.original_filename || '-'}</td>
-                    <td>${m.row_count || 0}</td>
-                    <td>${new Date(m.created_at).toLocaleString()}</td>
-                    <td><button class=\"btn secondary\" onclick=\"viewImportRecords(${m.id})\">View Records</button></td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          `;
-          document.getElementById('imports-metadata-table').innerHTML = table;
-          box.classList.remove('hidden');
-        } catch (err) {
-          document.getElementById('imports-metadata-table').innerHTML = `<div class="muted">Error: ${err.message}</div>`;
-          box.classList.remove('hidden');
-        }
-      }
-
-      window.viewImportRecords = async function(id) {
-        try {
-          const recs = await jsonFetch(`/api/imports-metadata/${id}/records?limit=100`);
-          const el = document.getElementById('imports-metadata-table');
-          const html = `
-            <div style="margin: 12px 0;">Showing first ${recs.length} records</div>
-            <pre style="white-space: pre-wrap; background: #f8fafc; padding: 12px; border-radius: 8px; max-height: 400px; overflow:auto;">${recs.map(r => JSON.stringify(r.raw, null, 2)).join('\n\n')}</pre>
-          `;
-          el.innerHTML = html;
-        } catch (err) {
-          document.getElementById('imports-metadata-table').innerHTML = `<div class="muted">Error loading records: ${err.message}</div>`;
-        }
-      }
-
-      // QuickBooks Web Connector functionality
-      document.addEventListener('DOMContentLoaded', function() {
-        const downloadQwcBtn = document.getElementById('download-qwc');
-        const checkQbwcStatusBtn = document.getElementById('check-qbwc-status');
-        const checkSslStatusBtn = document.getElementById('check-ssl-status');
-        const saveQbwcConfigBtn = document.getElementById('save-qbwc-config');
-        const resetQbwcConfigBtn = document.getElementById('reset-qbwc-config');
-        const qbwcInfoDiv = document.getElementById('qbwc-info');
-        
-        if (downloadQwcBtn) {
-          downloadQwcBtn.addEventListener('click', downloadQwcFile);
-        }
-        
-        if (checkQbwcStatusBtn) {
-          checkQbwcStatusBtn.addEventListener('click', checkQbwcStatus);
-        }
-        
-        if (checkSslStatusBtn) {
-          checkSslStatusBtn.addEventListener('click', checkSslStatus);
-        }
-        
-        if (saveQbwcConfigBtn) {
-          saveQbwcConfigBtn.addEventListener('click', saveQbwcConfig);
-        }
-        
-        if (resetQbwcConfigBtn) {
-          resetQbwcConfigBtn.addEventListener('click', resetQbwcConfig);
-        }
-        
-        // Load current configuration when page loads
-        loadQbwcConfig();
+    <script>
+      // Tab switching functionality
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          tab.classList.add('active');
+          document.getElementById(tab.dataset.tab).classList.add('active');
+        });
       });
 
-      async function downloadQwcFile() {
+      // Configuration form handlers
+      document.getElementById('qbConfigForm').addEventListener('submit', saveQBConfig);
+      document.getElementById('stripeConfigForm').addEventListener('submit', saveStripeConfig);
+      
+      // Button handlers
+      document.getElementById('testStripe').addEventListener('click', testStripeConnection);
+      document.getElementById('syncStripeNow').addEventListener('click', syncStripeTransactions);
+      document.getElementById('loadStripeCustomers').addEventListener('click', loadStripeCustomers);
+      document.getElementById('loadHaloCustomers').addEventListener('click', loadHaloCustomers);
+      document.getElementById('autoMatch').addEventListener('click', autoMatchCustomers);
+      document.getElementById('saveMappings').addEventListener('click', saveCustomerMappings);
+
+      // Load configuration on page load
+      window.addEventListener('load', loadConfiguration);
+
+      async function loadConfiguration() {
         try {
-          // Get the current base URL to ensure FQDN is used
-          const response = await fetch('/api/qbwc/info');
-          if (!response.ok) {
-            throw new Error('Failed to get QBWC info');
-          }
+          const response = await fetch('/api/config');
+          const config = await response.json();
           
-          const qbwcInfo = await response.json();
-          const qwcUrl = qbwcInfo.qwc_config;
+          // Populate form fields
+          Object.keys(config).forEach(key => {
+            const element = document.getElementById(key);
+            if (element) {
+              element.value = config[key];
+            }
+          });
           
-          // Check SSL status for helpful guidance
-          const sslResponse = await fetch('/api/ssl/info');
-          const sslInfo = sslResponse.ok ? await sslResponse.json() : null;
-          
-          // Trigger download using the dynamic URL
-          const a = document.createElement('a');
-          a.href = qwcUrl;
-          a.download = '';
-          a.style.display = 'none';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          
-          // Show success message with SSL guidance
-          let message = `✅ QWC configuration file downloaded!\n\nServer: ${qbwcInfo.base_url}\nFile will work with any FQDN including your Cloudflare tunnel.`;
-          
-          if (sslInfo && !sslInfo.is_https && qbwcInfo.base_url.includes('localhost')) {
-            message += '\n\n⚠️ SSL Certificate Notice:\nQuickBooks may show certificate error for localhost.\nRecommended: Use Cloudflare URL instead:\nhttps://qbd-msp.dev.dtctoday.com\n\nWhen QBWC shows certificate error, click "Yes" to accept.';
-          } else if (sslInfo && sslInfo.is_https) {
-            message += '\n\n✅ HTTPS active - Certificate should work with QuickBooks!';
-          }
-          
-          alert(message);
-          
+          // Load initial data
+          loadSystemStatus();
+          loadStripeTransactions();
+          loadCustomerMappings();
         } catch (error) {
-          alert('❌ Error downloading QWC file: ' + error.message + '\n\nTrying fallback URL...');
-          
-          // Fallback to direct download
-          const a = document.createElement('a');
-          a.href = '/qbwc/config';
-          a.download = '';
-          a.style.display = 'none';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
+          showStatus('Error loading configuration: ' + error.message, 'error');
         }
       }
 
-      async function loadQbwcConfig() {
-        try {
-          const response = await fetch('/api/qbwc/info');
-          if (!response.ok) {
-            throw new Error('Failed to get QBWC configuration');
-          }
-          
-          const qbwcInfo = await response.json();
-          
-          // Fill configuration form
-          document.getElementById('qbwc-app-name').value = qbwcInfo.app_name;
-          document.getElementById('qbwc-username').value = qbwcInfo.test_credentials.username;
-          document.getElementById('qbwc-password').value = qbwcInfo.test_credentials.password;
-          document.getElementById('qbwc-interval').value = 30; // Default until we get from config
-          
-        } catch (error) {
-          console.error('Error loading QBWC config:', error);
-        }
+      async function saveQBConfig(e) {
+        e.preventDefault();
+        await saveConfig(new FormData(e.target));
       }
 
-      async function saveQbwcConfig() {
+      async function saveStripeConfig(e) {
+        e.preventDefault();
+        await saveConfig(new FormData(e.target));
+      }
+
+      async function saveConfig(formData) {
         try {
-          const config = {
-            qbwc_app_name: document.getElementById('qbwc-app-name').value,
-            qbwc_username: document.getElementById('qbwc-username').value,
-            qbwc_password: document.getElementById('qbwc-password').value,
-            qbwc_sync_interval: document.getElementById('qbwc-interval').value
-          };
-          
+          const config = Object.fromEntries(formData);
           const response = await fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config)
           });
           
-          if (!response.ok) {
+          if (response.ok) {
+            showStatus('Configuration saved successfully', 'success');
+          } else {
             throw new Error('Failed to save configuration');
           }
-          
-          const result = await response.json();
-          alert('✅ QBWC configuration saved successfully!');
-          
-          // Reload the configuration to reflect changes
-          loadQbwcConfig();
-          
         } catch (error) {
-          alert('❌ Error saving QBWC configuration: ' + error.message);
+          showStatus('Error saving configuration: ' + error.message, 'error');
         }
       }
 
-      async function resetQbwcConfig() {
-        if (confirm('Reset QBWC configuration to defaults?\n\nThis will set:\n- Username: halopsa_user\n- Password: password123\n- App Name: CSV to QuickBooks IIF Sync\n- Sync Interval: 30 minutes')) {
-          try {
-            const defaultConfig = {
-              qbwc_app_name: 'CSV to QuickBooks IIF Sync',
-              qbwc_username: 'halopsa_user',
-              qbwc_password: 'password123',
-              qbwc_sync_interval: '30'
-            };
+      async function testStripeConnection() {
+        try {
+          const response = await fetch('/api/stripe/test');
+          const result = await response.json();
+          showStatus(result.message, result.success ? 'success' : 'error');
+        } catch (error) {
+          showStatus('Error testing Stripe connection: ' + error.message, 'error');
+        }
+      }
+
+      async function syncStripeTransactions() {
+        try {
+          const response = await fetch('/api/stripe/sync', { method: 'POST' });
+          const result = await response.json();
+          showStatus(result.message, result.success ? 'success' : 'error');
+          loadStripeTransactions();
+        } catch (error) {
+          showStatus('Error syncing Stripe transactions: ' + error.message, 'error');
+        }
+      }
+
+      async function loadStripeTransactions() {
+        try {
+          const response = await fetch('/api/stripe/transactions');
+          const transactions = await response.json();
+          const table = document.getElementById('transactionsTable');
+          table.innerHTML = transactions.map(tx => `
+            <tr>
+              <td>${new Date(tx.created * 1000).toLocaleDateString()}</td>
+              <td>${tx.customer_name || tx.customer_id}</td>
+              <td>$${(tx.amount / 100).toFixed(2)}</td>
+              <td>${tx.status}</td>
+              <td>${tx.mapped_to_halo ? '✓' : '✗'}</td>
+              <td>
+                <button class="action-btn primary" onclick="mapTransaction('${tx.id}')">Map</button>
+                <button class="action-btn warning" onclick="viewDetails('${tx.id}')">Details</button>
+              </td>
+            </tr>
+          `).join('');
+        } catch (error) {
+          console.error('Error loading transactions:', error);
+        }
+      }
+
+      async function loadCustomerMappings() {
+        try {
+          const response = await fetch('/api/customers/mappings');
+          const mappings = await response.json();
+          const table = document.getElementById('mappingsTable');
+          table.innerHTML = mappings.map(mapping => `
+            <tr>
+              <td>${mapping.stripe_customer_name || mapping.stripe_customer_id}</td>
+              <td>${mapping.halopsa_client_name || 'Not mapped'}</td>
+              <td>${mapping.auto_mapped ? 'Auto' : 'Manual'}</td>
+              <td>
+                <button class="action-btn warning" onclick="editMapping('${mapping.id}')">Edit</button>
+                <button class="action-btn danger" onclick="deleteMapping('${mapping.id}')">Delete</button>
+              </td>
+            </tr>
+          `).join('');
+        } catch (error) {
+          console.error('Error loading mappings:', error);
+        }
+      }
+
+      async function loadSystemStatus() {
+        try {
+          const response = await fetch('/api/status');
+          const status = await response.json();
+          
+          const qbwcStatus = document.getElementById('qbwcStatus');
+          qbwcStatus.textContent = status.qbwc.message;
+          qbwcStatus.parentElement.className = `status ${status.qbwc.status === 'healthy' ? 'success' : 'error'}`;
+          
+          const stripeStatus = document.getElementById('stripeStatus');
+          stripeStatus.textContent = status.stripe.message;
+          stripeStatus.parentElement.className = `status ${status.stripe.status === 'healthy' ? 'success' : 'error'}`;
+          
+          const halopsaStatus = document.getElementById('halopsaStatus');
+          halopsaStatus.textContent = status.halopsa.message;
+          halopsaStatus.parentElement.className = `status ${status.halopsa.status === 'healthy' ? 'success' : 'error'}`;
+          
+          const dbStatus = document.getElementById('dbStatus');
+          dbStatus.textContent = status.database.message;
+          dbStatus.parentElement.className = `status ${status.database.status === 'healthy' ? 'success' : 'error'}`;
+        } catch (error) {
+          console.error('Error loading status:', error);
+        }
+      }
+
+      async function loadStripeCustomers() {
+        try {
+          const response = await fetch('/api/stripe/customers');
+          const customers = await response.json();
+          const container = document.getElementById('stripeCustomers');
+          container.innerHTML = '<h4>Stripe Customers</h4>' + customers.map(customer => `
+            <div class="customer-item" data-id="${customer.id}" onclick="selectStripeCustomer(this)">
+              <strong>${customer.name || 'Unnamed Customer'}</strong><br>
+              ${customer.email || 'No email'} 
+              <span class="match-score">New</span>
+            </div>
+          `).join('');
+        } catch (error) {
+          console.error('Error loading Stripe customers:', error);
+        }
+      }
+
+      async function loadHaloCustomers() {
+        try {
+          const response = await fetch('/api/halopsa/clients');
+          const clients = await response.json();
+          const container = document.getElementById('haloCustomers');
+          container.innerHTML = '<h4>HaloPSA Clients</h4>' + clients.map(client => `
+            <div class="customer-item" data-id="${client.id}" onclick="selectHaloCustomer(this)">
+              <strong>${client.name}</strong><br>
+              ${client.email || 'No email'}
+            </div>
+          `).join('');
+        } catch (error) {
+          console.error('Error loading HaloPSA clients:', error);
+        }
+      }
+
+      async function autoMatchCustomers() {
+        try {
+          const response = await fetch('/api/customers/automatch', { method: 'POST' });
+          const result = await response.json();
+          
+          if (result.success) {
+            const resultsDiv = document.getElementById('mappingResults');
+            resultsDiv.innerHTML = '<h4>Auto-match Results</h4>' + result.matches.map(match => `
+              <div style="padding: 10px; border-bottom: 1px solid #eee;">
+                <strong>${match.stripe_customer.name}</strong> → 
+                <strong>${match.halo_client.name}</strong>
+                <span style="float: right; color: #666;">Score: ${(match.match_score * 100).toFixed(1)}%</span>
+                <button class="action-btn success" onclick="confirmMapping('${match.stripe_customer.id}', '${match.halo_client.id}')">Confirm</button>
+              </div>
+            `).join('');
             
-            const response = await fetch('/api/config', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(defaultConfig)
+            showStatus(`Found ${result.matches.length} potential matches`, 'success');
+          }
+        } catch (error) {
+          showStatus('Error auto-matching customers: ' + error.message, 'error');
+        }
+      }
+
+      async function saveCustomerMappings() {
+        showStatus('Manual mapping save functionality coming soon', 'info');
+      }
+
+      function selectStripeCustomer(element) {
+        document.querySelectorAll('#stripeCustomers .customer-item').forEach(item => {
+          item.classList.remove('selected');
+        });
+        element.classList.add('selected');
+      }
+
+      function selectHaloCustomer(element) {
+        document.querySelectorAll('#haloCustomers .customer-item').forEach(item => {
+          item.classList.remove('selected');
+        });
+        element.classList.add('selected');
+      }
+
+      async function confirmMapping(stripeCustomerId, haloClientId) {
+        try {
+          const response = await fetch('/api/customers/map', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stripe_customer_id: stripeCustomerId, halopsa_client_id: haloClientId })
+          });
+          
+          if (response.ok) {
+            showStatus('Customer mapping confirmed', 'success');
+            loadCustomerMappings();
+          }
+        } catch (error) {
+          showStatus('Error confirming mapping: ' + error.message, 'error');
+        }
+      }
+
+      function showStatus(message, type) {
+        const statusDiv = document.getElementById('statusMessage');
+        statusDiv.textContent = message;
+        statusDiv.className = `status ${type}`;
+        statusDiv.style.display = 'block';
+        setTimeout(() => statusDiv.style.display = 'none', 5000);
+      }
+
+      // Additional helper functions
+      async function mapTransaction(transactionId) {
+        showStatus('Transaction mapping functionality coming soon', 'info');
+      }
+
+      async function viewDetails(transactionId) {
+        showStatus('Transaction details functionality coming soon', 'info');
+      }
+
+      async function editMapping(mappingId) {
+        showStatus('Edit mapping functionality coming soon', 'info');
+      }
+
+      async function deleteMapping(mappingId) {
+        if (confirm('Are you sure you want to delete this mapping?')) {
+          try {
+            const response = await fetch(`/api/customers/mappings/${mappingId}`, {
+              method: 'DELETE'
             });
             
-            if (!response.ok) {
-              throw new Error('Failed to reset configuration');
+            if (response.ok) {
+              showStatus('Mapping deleted successfully', 'success');
+              loadCustomerMappings();
             }
-            
-            alert('✅ QBWC configuration reset to defaults!');
-            
-            // Reload the configuration
-            loadQbwcConfig();
-            
           } catch (error) {
-            alert('❌ Error resetting QBWC configuration: ' + error.message);
+            showStatus('Error deleting mapping: ' + error.message, 'error');
           }
-        }
-      }
-
-      async function checkSslStatus() {
-        try {
-          const response = await fetch('/api/ssl/info');
-          if (!response.ok) {
-            throw new Error('Failed to get SSL status');
-          }
-          
-          const sslInfo = await response.json();
-          const sslInfoDiv = document.getElementById('ssl-info');
-          const sslContent = document.getElementById('ssl-status-content');
-          
-          // Update SSL status display
-          let sslHtml = `
-            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
-              <div><strong>Protocol:</strong> ${sslInfo.protocol}</div>
-              <div><strong>HTTPS Active:</strong> ${sslInfo.is_https ? '✅ Yes' : '❌ No'}</div>
-              <div><strong>Host:</strong> ${sslInfo.host}</div>
-              <div><strong>Certificate Status:</strong> ${sslInfo.certificate_status}</div>
-            </div>
-          `;
-          
-          sslContent.innerHTML = sslHtml;
-          sslInfoDiv.style.display = 'block';
-          
-          // Provide specific guidance based on SSL status
-          if (!sslInfo.is_https) {
-            alert('⚠️ SSL Issue Detected!\n\nQuickBooks requires HTTPS with valid SSL certificate.\n\nRecommended Solutions:\n1. Use Cloudflare URL: https://qbd-msp.dev.dtctoday.com\n2. When QBWC shows certificate error, click "Yes" to accept\n3. Or configure your domain with valid SSL certificate');
-          }
-          
-        } catch (error) {
-          alert('❌ Error checking SSL status: ' + error.message);
-        }
-      }
-
-      async function checkQbwcStatus() {
-        try {
-          const response = await fetch('/api/qbwc/info');
-          if (!response.ok) {
-            throw new Error('Failed to get QBWC status');
-          }
-          
-          const qbwcInfo = await response.json();
-          const infoDiv = document.getElementById('qbwc-info');
-          
-          // Update UI with QBWC information
-          document.getElementById('qbwc-status').textContent = qbwcInfo.status === 'active' ? '✅ Active' : '❌ Inactive';
-          document.getElementById('qbwc-endpoint-link').textContent = qbwcInfo.qbwc_endpoint;
-          document.getElementById('qbwc-endpoint-link').href = qbwcInfo.qbwc_endpoint;
-          document.getElementById('qbwc-username-display').textContent = qbwcInfo.test_credentials.username;
-          document.getElementById('qbwc-password-display').textContent = qbwcInfo.test_credentials.password;
-          
-          // Show the info section
-          infoDiv.style.display = 'block';
-          
-        } catch (error) {
-          alert('❌ Error checking QBWC status: ' + error.message);
         }
       }
     </script>
   </body>
 </html>
-
-

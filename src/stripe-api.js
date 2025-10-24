@@ -1,353 +1,206 @@
 const Stripe = require('stripe');
 
 class StripeAPI {
-    constructor(apiKey) {
-        this.stripe = new Stripe(apiKey || process.env.STRIPE_SECRET_KEY);
-        this.webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    constructor(db) {
+        this.db = db;
+        this.stripe = null;
+        this.initialize();
     }
 
-    // Test connection to Stripe
+    async initialize() {
+        try {
+            const config = await this.getConfig();
+            if (config.stripe_secret_key) {
+                this.stripe = new Stripe(config.stripe_secret_key);
+                console.log('Stripe API initialized successfully');
+            }
+        } catch (error) {
+            console.error('Error initializing Stripe API:', error);
+        }
+    }
+
+    async getConfig() {
+        const configRows = await this.db.all('SELECT key, value FROM config');
+        const config = {};
+        configRows.forEach(row => {
+            config[row.key] = row.value;
+        });
+        return config;
+    }
+
     async testConnection() {
         try {
+            if (!this.stripe) {
+                return { success: false, message: 'Stripe not configured - check secret key' };
+            }
+
             const balance = await this.stripe.balance.retrieve();
-            return {
-                success: true,
-                balance: balance,
-                message: 'Stripe connection successful'
+            return { 
+                success: true, 
+                message: `Stripe connection successful. Balance: ${balance.available[0].amount / 100} ${balance.available[0].currency}`
             };
         } catch (error) {
-            return {
-                success: false,
-                error: error.message,
-                message: 'Stripe connection failed'
-            };
+            return { success: false, message: `Stripe connection failed: ${error.message}` };
         }
     }
 
-    // Get all customers with pagination
-    async getAllCustomers(limit = 100) {
+    async syncTransactions() {
         try {
-            const customers = await this.stripe.customers.list({
-                limit: limit,
-                expand: ['data.subscriptions']
-            });
+            if (!this.stripe) {
+                return { success: false, message: 'Stripe not configured' };
+            }
+
+            let syncedCount = 0;
+            const latestTransaction = await this.db.get(
+                'SELECT MAX(created) as latest FROM stripe_transactions'
+            );
             
+            const startingAfter = latestTransaction ? latestTransaction.latest : undefined;
+            const charges = await this.stripe.charges.list({
+                limit: 100,
+                starting_after: startingAfter
+            });
+
+            for (const charge of charges.data) {
+                // Check if transaction already exists
+                const existing = await this.db.get(
+                    'SELECT id FROM stripe_transactions WHERE stripe_id = ?',
+                    [charge.id]
+                );
+
+                if (!existing) {
+                    await this.db.run(
+                        `INSERT INTO stripe_transactions (
+                            stripe_id, customer_id, amount, currency, description, 
+                            status, created, invoice_id, payment_intent_id, refunded, raw_data
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            charge.id,
+                            charge.customer,
+                            charge.amount,
+                            charge.currency,
+                            charge.description,
+                            charge.status,
+                            charge.created,
+                            charge.invoice,
+                            charge.payment_intent,
+                            charge.refunded,
+                            JSON.stringify(charge)
+                        ]
+                    );
+                    syncedCount++;
+                }
+            }
+
+            return { 
+                success: true, 
+                message: `Synced ${syncedCount} new transactions`,
+                count: syncedCount 
+            };
+        } catch (error) {
+            console.error('Error syncing Stripe transactions:', error);
+            return { success: false, message: `Error syncing transactions: ${error.message}` };
+        }
+    }
+
+    async getCustomers() {
+        try {
+            if (!this.stripe) {
+                return [];
+            }
+
+            const customers = await this.stripe.customers.list({ limit: 100 });
             return customers.data.map(customer => ({
                 id: customer.id,
-                name: customer.name,
                 email: customer.email,
-                phone: customer.phone,
+                name: customer.name,
                 description: customer.description,
-                created: new Date(customer.created * 1000).toISOString(),
-                metadata: customer.metadata,
-                balance: customer.balance,
-                currency: customer.currency,
-                subscriptions: customer.subscriptions?.data.map(sub => ({
-                    id: sub.id,
-                    status: sub.status,
-                    current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
-                    current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
-                    items: sub.items.data.map(item => ({
-                        price: item.price.id,
-                        product: item.price.product,
-                        quantity: item.quantity
-                    }))
-                })) || []
+                created: customer.created,
+                metadata: customer.metadata
             }));
         } catch (error) {
-            throw new Error(`Failed to fetch customers: ${error.message}`);
+            console.error('Error fetching Stripe customers:', error);
+            return [];
         }
     }
 
-    // Get all charges/payments with pagination (for cash-based accounting)
-    async getAllTransactions(limit = 100, startingAfter = null) {
+    async getTransactionDetails(transactionId) {
         try {
-            const params = {
-                limit: limit,
-                expand: ['data.customer', 'data.invoice']
-            };
-            
-            if (startingAfter) {
-                params.starting_after = startingAfter;
+            if (!this.stripe) {
+                return null;
             }
 
-            const charges = await this.stripe.charges.list(params);
-            
-            return charges.data.map(charge => ({
-                charge_id: charge.id,
-                payment_intent_id: charge.payment_intent,
-                customer_id: charge.customer?.id,
-                customer_email: charge.customer?.email,
-                customer_name: charge.customer?.name,
-                amount: charge.amount / 100, // Convert from cents to dollars
-                currency: charge.currency,
-                fee_amount: charge.application_fee_amount ? charge.application_fee_amount / 100 : 0,
-                net_amount: (charge.amount - (charge.application_fee_amount || 0)) / 100,
-                description: charge.description,
-                invoice_id: charge.invoice?.id,
-                created: new Date(charge.created * 1000).toISOString(),
-                paid_date: charge.paid ? new Date(charge.created * 1000).toISOString() : null,
-                status: charge.status,
-                metadata: charge.metadata,
-                receipt_url: charge.receipt_url,
-                billing_details: charge.billing_details
-            }));
+            const charge = await this.stripe.charges.retrieve(transactionId);
+            return charge;
         } catch (error) {
-            throw new Error(`Failed to fetch transactions: ${error.message}`);
+            console.error('Error fetching transaction details:', error);
+            return null;
         }
     }
 
-    // Get all transactions for a specific time period (cash accounting)
-    async getTransactionsByDateRange(startDate, endDate, limit = 100) {
+    async mapTransactionToCustomer(transactionId, haloClientId) {
         try {
-            const startTimestamp = Math.floor(new Date(startDate).getTime() / 1000);
-            const endTimestamp = Math.floor(new Date(endDate).getTime() / 1000);
-
-            const charges = await this.stripe.charges.list({
-                limit: limit,
-                created: {
-                    gte: startTimestamp,
-                    lte: endTimestamp
-                },
-                expand: ['data.customer', 'data.invoice']
-            });
-
-            return charges.data.map(charge => this.formatChargeForAccounting(charge));
-        } catch (error) {
-            throw new Error(`Failed to fetch transactions by date range: ${error.message}`);
-        }
-    }
-
-    // Format charge for cash-based accounting
-    formatChargeForAccounting(charge) {
-        return {
-            charge_id: charge.id,
-            payment_intent_id: charge.payment_intent,
-            customer_id: charge.customer?.id,
-            customer_email: charge.customer?.email,
-            customer_name: charge.customer?.name || charge.billing_details?.name,
-            amount: charge.amount / 100,
-            currency: charge.currency,
-            fee_amount: this.calculateStripeFees(charge),
-            net_amount: (charge.amount - this.calculateStripeFees(charge) * 100) / 100,
-            description: charge.description || `Payment from ${charge.billing_details?.name || 'Customer'}`,
-            invoice_id: charge.invoice?.id,
-            created: new Date(charge.created * 1000).toISOString(),
-            paid_date: charge.paid ? new Date(charge.created * 1000).toISOString() : null,
-            status: charge.status,
-            metadata: charge.metadata,
-            receipt_url: charge.receipt_url,
-            // Additional fields for MSP accounting
-            accounting_date: new Date(charge.created * 1000).toISOString().split('T')[0], // Date only for cash accounting
-            payment_method: charge.payment_method_details?.type || 'card'
-        };
-    }
-
-    // Calculate Stripe fees (simplified - in practice, use actual fee breakdown)
-    calculateStripeFees(charge) {
-        // Standard Stripe fee: 2.9% + $0.30
-        const percentageFee = charge.amount * 0.029;
-        const fixedFee = 30; // $0.30 in cents
-        return (percentageFee + fixedFee) / 100; // Convert to dollars
-    }
-
-    // Get subscription information for recurring payments
-    async getSubscriptions(limit = 100) {
-        try {
-            const subscriptions = await this.stripe.subscriptions.list({
-                limit: limit,
-                status: 'all',
-                expand: ['data.customer', 'data.items.data.price.product']
-            });
-
-            return subscriptions.data.map(sub => ({
-                id: sub.id,
-                customer_id: sub.customer.id,
-                status: sub.status,
-                current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
-                current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
-                cancel_at_period_end: sub.cancel_at_period_end,
-                items: sub.items.data.map(item => ({
-                    id: item.id,
-                    price: item.price.id,
-                    product: item.price.product,
-                    product_name: item.price.product?.name,
-                    quantity: item.quantity,
-                    amount: item.price.unit_amount / 100
-                })),
-                total_amount: sub.items.data.reduce((sum, item) => 
-                    sum + (item.price.unit_amount * item.quantity / 100), 0)
-            }));
-        } catch (error) {
-            throw new Error(`Failed to fetch subscriptions: ${error.message}`);
-        }
-    }
-
-    // Sync all data from Stripe for cash-based accounting
-    async fullSync(options = {}) {
-        const {
-            syncCustomers = true,
-            syncTransactions = true,
-            syncSubscriptions = true,
-            dateRange = null,
-            limit = 100
-        } = options;
-
-        const results = {
-            customers: [],
-            transactions: [],
-            subscriptions: [],
-            summary: {}
-        };
-
-        try {
-            // Sync customers
-            if (syncCustomers) {
-                results.customers = await this.getAllCustomers(limit);
-                results.summary.totalCustomers = results.customers.length;
-            }
-
-            // Sync transactions
-            if (syncTransactions) {
-                if (dateRange) {
-                    results.transactions = await this.getTransactionsByDateRange(
-                        dateRange.start, 
-                        dateRange.end, 
-                        limit
-                    );
-                } else {
-                    results.transactions = await this.getAllTransactions(limit);
-                }
-                results.summary.totalTransactions = results.transactions.length;
-                results.summary.totalAmount = results.transactions.reduce((sum, t) => sum + t.net_amount, 0);
-            }
-
-            // Sync subscriptions
-            if (syncSubscriptions) {
-                results.subscriptions = await this.getSubscriptions(limit);
-                results.summary.totalSubscriptions = results.subscriptions.length;
-            }
-
-            results.summary.success = true;
-            return results;
-
-        } catch (error) {
-            results.summary.success = false;
-            results.summary.error = error.message;
-            return results;
-        }
-    }
-
-    // Webhook handling for real-time updates
-    async handleWebhook(event) {
-        try {
-            switch (event.type) {
-                case 'charge.succeeded':
-                    return await this.handleChargeSucceeded(event.data.object);
-                
-                case 'customer.subscription.created':
-                case 'customer.subscription.updated':
-                case 'customer.subscription.deleted':
-                    return await this.handleSubscriptionEvent(event);
-                
-                case 'invoice.payment_succeeded':
-                    return await this.handleInvoicePayment(event.data.object);
-                
-                default:
-                    return { handled: false, type: event.type };
-            }
-        } catch (error) {
-            throw new Error(`Webhook handling failed: ${error.message}`);
-        }
-    }
-
-    // Handle successful charge (cash accounting: record when payment is received)
-    async handleChargeSucceeded(charge) {
-        const transaction = this.formatChargeForAccounting(charge);
-        
-        // For MSP cash accounting, this is when we recognize revenue
-        return {
-            type: 'charge.succeeded',
-            transaction: transaction,
-            accounting_date: transaction.accounting_date,
-            message: 'Payment received and ready for cash accounting'
-        };
-    }
-
-    // Handle subscription events for recurring revenue
-    async handleSubscriptionEvent(event) {
-        const subscription = event.data.object;
-        
-        return {
-            type: event.type,
-            subscription_id: subscription.id,
-            customer_id: subscription.customer,
-            status: subscription.status,
-            message: `Subscription ${event.type.split('.')[2]}`
-        };
-    }
-
-    // Handle invoice payments (links Stripe invoices to HaloPSA invoices)
-    async handleInvoicePayment(invoice) {
-        return {
-            type: 'invoice.payment_succeeded',
-            invoice_id: invoice.id,
-            charge_id: invoice.charge,
-            customer_id: invoice.customer,
-            amount: invoice.amount_paid / 100,
-            message: 'Invoice payment completed'
-        };
-    }
-
-    // Generate QuickBooks compatible data for cash basis accounting
-    generateQBDataForCashAccounting(transactions, startDate, endDate) {
-        // Filter transactions for the accounting period
-        const periodTransactions = transactions.filter(t => {
-            const tDate = new Date(t.accounting_date);
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            return tDate >= start && tDate <= end;
-        });
-
-        // Group by customer for summary
-        const customerSummary = periodTransactions.reduce((acc, transaction) => {
-            const customerId = transaction.customer_id || 'unknown';
-            if (!acc[customerId]) {
-                acc[customerId] = {
-                    customer_name: transaction.customer_name || 'Unknown Customer',
-                    total_amount: 0,
-                    transactions: []
-                };
-            }
-            acc[customerId].total_amount += transaction.net_amount;
-            acc[customerId].transactions.push(transaction);
-            return acc;
-        }, {});
-
-        return {
-            period: { start: startDate, end: endDate },
-            transactions: periodTransactions,
-            customerSummary: customerSummary,
-            totalRevenue: periodTransactions.reduce((sum, t) => sum + t.net_amount, 0),
-            totalFees: periodTransactions.reduce((sum, t) => sum + t.fee_amount, 0)
-        };
-    }
-
-    // Validate webhook signature
-    validateWebhookSignature(payload, signature) {
-        if (!this.webhookSecret) {
-            throw new Error('STRIPE_WEBHOOK_SECRET not configured');
-        }
-
-        try {
-            const event = this.stripe.webhooks.constructEvent(
-                payload,
-                signature,
-                this.webhookSecret
+            const transaction = await this.db.get(
+                'SELECT * FROM stripe_transactions WHERE stripe_id = ?',
+                [transactionId]
             );
-            return { valid: true, event };
+
+            if (!transaction) {
+                return { success: false, message: 'Transaction not found' };
+            }
+
+            // Update transaction mapping
+            await this.db.run(
+                'UPDATE stripe_transactions SET mapped_to_halo = ? WHERE stripe_id = ?',
+                [true, transactionId]
+            );
+
+            // Update customer mapping if customer exists
+            if (transaction.customer_id) {
+                await this.db.run(
+                    `INSERT OR REPLACE INTO customer_mappings 
+                    (stripe_customer_id, halopsa_client_id, mapping_confirmed, updated_at) 
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+                    [transaction.customer_id, haloClientId, true]
+                );
+            }
+
+            return { success: true, message: 'Transaction mapped successfully' };
         } catch (error) {
-            return { valid: false, error: error.message };
+            console.error('Error mapping transaction:', error);
+            return { success: false, message: 'Error mapping transaction' };
+        }
+    }
+
+    async getDashboardStats() {
+        try {
+            const totalTransactions = await this.db.get(
+                'SELECT COUNT(*) as count FROM stripe_transactions'
+            );
+            
+            const mappedTransactions = await this.db.get(
+                'SELECT COUNT(*) as count FROM stripe_transactions WHERE mapped_to_halo = 1'
+            );
+            
+            const totalCustomers = await this.db.get(
+                'SELECT COUNT(DISTINCT customer_id) as count FROM stripe_transactions WHERE customer_id IS NOT NULL'
+            );
+            
+            const mappedCustomers = await this.db.get(
+                'SELECT COUNT(*) as count FROM customer_mappings WHERE mapping_confirmed = 1'
+            );
+
+            return {
+                totalTransactions: totalTransactions.count,
+                mappedTransactions: mappedTransactions.count,
+                totalCustomers: totalCustomers.count,
+                mappedCustomers: mappedCustomers.count,
+                syncRate: totalTransactions.count > 0 ? 
+                    (mappedTransactions.count / totalTransactions.count * 100).toFixed(1) : 0
+            };
+        } catch (error) {
+            console.error('Error fetching dashboard stats:', error);
+            return {};
         }
     }
 }
