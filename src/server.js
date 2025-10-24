@@ -1291,7 +1291,10 @@ app.post('/api/config', async (req, res) => {
         
         // Update each configuration key
         for (const [key, value] of Object.entries(configUpdates)) {
-            await db.setConfig(key, value);
+            await db.run(
+                'INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+                [key, value]
+            );
         }
         
         res.json({ 

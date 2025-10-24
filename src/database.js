@@ -177,6 +177,13 @@ class DatabaseManager {
     return stmt.run(params);
   }
 
+  setConfig(key, value) {
+    return this.run(
+      'INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+      [key, value]
+    );
+  }
+
   close() {
     this.db.close();
   }
