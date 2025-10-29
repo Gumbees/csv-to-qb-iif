@@ -9,18 +9,18 @@ const dayjs = require('dayjs');
 const Database = require('./database');
 const StripeAPI = require('./stripe-api');
 const HaloPSAAPI = require('./halopsa-api');
+const ConfigAPI = require('./config-api');
 const crypto = require('crypto');
 const QBWCService = require('./qbwc-service');
-let StripeLib = null; try { StripeLib = require('stripe'); } catch (_) { /* optional dependency */ }
+const ItemSyncService = require('./item-sync-service');
 
 const app = express();
 const port = process.env.PORT || 3000;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 const db = new Database();
 const qbwcService = new QBWCService();
-const stripeSecret = process.env.STRIPE_SECRET_KEY || '';
-const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
-const stripe = (StripeLib && stripeSecret) ? new StripeLib(stripeSecret) : null;
+const configAPI = new ConfigAPI(db);
+// Stripe integration now handled by StripeAPI class
 
 // Ensure DB initialization completes before serving traffic
 (async () => {
@@ -32,10 +32,7 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '25mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '25mb' }));
 
-// Raw body for Stripe webhook signature verification (enable only if configured)
-if (stripe && stripeWebhookSecret) {
-  app.use('/api/webhooks/stripe', express.raw({ type: '*/*' }));
-}
+// Webhook endpoints will be handled by StripeAPI class
 
 function formatDate(input) {
     if (!input) return dayjs().format('MM/DD/YYYY');
@@ -278,8 +275,11 @@ app.get('/healthz', async (req, res) => {
     }
 });
 
+// Serve static files from the src directory
+app.use(express.static(__dirname));
+
 app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/renderer.html');
+    res.sendFile(__dirname + '/index.html');
 });
 
 
@@ -1042,7 +1042,7 @@ app.post('/api/qbd/accounts/default', async (req, res) => {
 });
 
 // QuickBooks Web Connector Endpoints
-app.post('/qbwc', express.text({ type: '*/*' }), (req, res) => {
+app.post('/qbwc', express.text({ type: '*/*' }), async (req, res) => {
     // Parse the QBWC SOAP request
     const soapRequest = req.body;
     console.log('QBWC Request received:', soapRequest.substring(0, 500) + '...');
@@ -1121,20 +1121,66 @@ app.post('/qbwc', express.text({ type: '*/*' }), (req, res) => {
     else if (soapRequest.includes('sendRequestXML')) {
         const ticketMatch = soapRequest.match(/<ticket[^>]*>([^<]+)<\/ticket>/);
         const ticket = ticketMatch ? ticketMatch[1] : '';
-        
+
         console.log('QBWC sendRequestXML for ticket:', ticket);
-        
-        // Get pending purchase orders from database
-        const pendingBills = []; // Placeholder - would be loaded from database
-        
+
+        // Get session to track what we're syncing
+        let session = qbwcService.getSession(ticket);
+        if (!session) {
+            session = qbwcService.createSession(ticket);
+        }
+
         let qbxmlData = '';
-        if (pendingBills.length > 0) {
-            qbxmlData = qbwcService.generatePurchaseOrderQBXML(pendingBills);
-        } else {
-            // No data to process
+
+        try {
+            // Priority 1: Check if account sync is pending
+            const accountSyncPending = session.accountSyncPending || false;
+
+            if (accountSyncPending) {
+                console.log('QBWC: Generating AccountQuery request');
+                qbxmlData = qbwcService.generateAccountQueryQBXML();
+                session.currentRequest = 'accounts';
+                session.accountSyncPending = false; // Clear flag
+                console.log('QBWC: Generated QBXML for Chart of Accounts query');
+            }
+            // Priority 2: Check if we have unsynced items to process
+            else {
+                const itemSyncService = new ItemSyncService(db);
+                const unsyncedItems = await itemSyncService.getUnsyncedItems();
+
+                if (unsyncedItems.length > 0) {
+                    console.log(`QBWC: Found ${unsyncedItems.length} unsynced items to process`);
+
+                    // Store item IDs in session for later marking as synced
+                    session.pendingItemIds = unsyncedItems.map(item => item.id);
+                    session.currentRequest = 'items';
+
+                    // Generate QBXML for all items
+                    qbxmlData = qbwcService.generateAllItemsQBXML(unsyncedItems);
+
+                    console.log('QBWC: Generated QBXML for items');
+                } else {
+                    console.log('QBWC: No unsynced items found');
+
+                    // Check for pending purchase orders (future implementation)
+                    const pendingBills = []; // Placeholder - would be loaded from database
+
+                    if (pendingBills.length > 0) {
+                        qbxmlData = qbwcService.generatePurchaseOrderQBXML(pendingBills);
+                        session.currentRequest = 'bills';
+                    } else {
+                        // No data to process
+                        console.log('QBWC: No data to sync');
+                        qbxmlData = '';
+                        session.currentRequest = null;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('QBWC: Error generating request:', error);
             qbxmlData = '';
         }
-        
+
         responseXML = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
     <soap:Body>
@@ -1149,22 +1195,104 @@ app.post('/qbwc', express.text({ type: '*/*' }), (req, res) => {
         const responseMatch = soapRequest.match(/<response[^>]*>([^<]+)<\/response>/);
         const hresultMatch = soapRequest.match(/<hresult[^>]*>([^<]+)<\/hresult>/);
         const messageMatch = soapRequest.match(/<message[^>]*>([^<]+)<\/message>/);
-        
+
         const ticket = ticketMatch ? ticketMatch[1] : '';
         const response = responseMatch ? responseMatch[1] : '';
         const hresult = hresultMatch ? hresultMatch[1] : '';
         const message = messageMatch ? messageMatch[1] : '';
-        
+
         console.log('QBWC receiveResponseXML:', { ticket, hresult, message });
-        
+
+        // Get session to see what was being synced
+        const session = qbwcService.getSession(ticket);
+
         // Process the response
         if (hresult === '0') {
             console.log('QBWC operation completed successfully');
-            // Mark bills as processed in database
+
+            try {
+                // Handle account sync completion
+                if (session && session.currentRequest === 'accounts') {
+                    console.log('QBWC: Processing AccountQueryRs response');
+
+                    // Parse and store accounts in database
+                    const result = await qbwcService.parseAccountQueryResponse(response);
+
+                    if (result.success) {
+                        console.log(`QBWC: Successfully stored ${result.count} accounts from QuickBooks`);
+                    } else {
+                        console.error('QBWC: Error parsing AccountQueryRs:', result.error);
+                    }
+
+                    // Clear session data
+                    session.currentRequest = null;
+                }
+                // Handle item sync completion
+                else if (session && session.currentRequest === 'items' && session.pendingItemIds) {
+                    const itemSyncService = new ItemSyncService(db);
+
+                    // Parse response to extract ListIDs
+                    const listIds = [];
+                    const listIdMatches = response.matchAll(/<ListID>([^<]+)<\/ListID>/g);
+                    for (const match of listIdMatches) {
+                        listIds.push(match[1]);
+                    }
+
+                    console.log(`QBWC: Marking ${session.pendingItemIds.length} items as synced with ${listIds.length} ListIDs`);
+
+                    // Mark items as synced
+                    await itemSyncService.markItemsSynced(session.pendingItemIds, listIds);
+
+                    // Log successful sync
+                    await itemSyncService.logSync(
+                        'BATCH',
+                        'MIXED',
+                        'qbwc_sync',
+                        'success',
+                        null,
+                        null,
+                        response
+                    );
+
+                    console.log('QBWC: Items marked as synced successfully');
+
+                    // Clear session data
+                    session.pendingItemIds = null;
+                    session.currentRequest = null;
+                } else if (session && session.currentRequest === 'bills') {
+                    // Future: handle bill sync completion
+                    console.log('QBWC: Bills processed successfully');
+                    session.currentRequest = null;
+                }
+            } catch (error) {
+                console.error('QBWC: Error processing successful response:', error);
+            }
         } else {
             console.log('QBWC operation failed:', message);
+
+            try {
+                // Log failed sync
+                if (session && session.currentRequest === 'items') {
+                    const itemSyncService = new ItemSyncService(db);
+                    await itemSyncService.logSync(
+                        'BATCH',
+                        'MIXED',
+                        'qbwc_sync',
+                        'error',
+                        message,
+                        null,
+                        response
+                    );
+
+                    // Clear session data
+                    session.pendingItemIds = null;
+                    session.currentRequest = null;
+                }
+            } catch (error) {
+                console.error('QBWC: Error logging failed response:', error);
+            }
         }
-        
+
         responseXML = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
     <soap:Body>
@@ -1322,25 +1450,779 @@ app.get('/api/config', async (req, res) => {
     }
 });
 
-app.get('/api/stripe/test', async (req, res) => {
+// Category-based configuration endpoints
+app.get('/api/config/:category', async (req, res) => {
     try {
-        const stripeAPI = new StripeAPI(db);
-        const result = await stripeAPI.testConnection();
-        res.json(result);
+        const category = req.params.category;
+        const configs = await configAPI.getConfigByCategory(category);
+        res.json(configs);
     } catch (error) {
-        console.error('Error testing Stripe connection:', error);
-        res.status(500).json({ success: false, message: 'Error testing Stripe connection' });
+        console.error(`Error fetching ${req.params.category} configuration:`, error);
+        res.status(500).json({ error: `Failed to fetch ${req.params.category} configuration` });
     }
 });
 
-app.post('/api/stripe/sync', async (req, res) => {
+app.put('/api/config/:category', async (req, res) => {
     try {
+        const category = req.params.category;
+        const updates = req.body;
+        
+        if (!updates || typeof updates !== 'object') {
+            return res.status(400).json({ error: 'Invalid configuration data' });
+        }
+        
+        for (const [key, valueObj] of Object.entries(updates)) {
+            if (typeof valueObj === 'object' && valueObj.hasOwnProperty('value') && valueObj.hasOwnProperty('type')) {
+                await configAPI.updateConfig(key, valueObj.value, valueObj.type);
+            }
+        }
+        
+        const updatedConfigs = await configAPI.getConfigByCategory(category);
+        res.json({ 
+            success: true, 
+            message: `${category} configuration updated successfully`,
+            configs: updatedConfigs 
+        });
+    } catch (error) {
+        console.error(`Error updating ${req.params.category} configuration:`, error);
+        res.status(500).json({ error: `Failed to update ${req.params.category} configuration` });
+    }
+});
+
+app.get('/api/stripe/test', async (req, res) => {
+    console.log('🔌 Stripe test endpoint called');
+    try {
+        console.log('🔄 Creating StripeAPI instance...');
         const stripeAPI = new StripeAPI(db);
-        const result = await stripeAPI.syncTransactions();
+        console.log('✅ StripeAPI instance created, testing connection...');
+        const result = await stripeAPI.testConnection();
+        console.log('🎯 Stripe test result:', result);
         res.json(result);
     } catch (error) {
-        console.error('Error syncing Stripe transactions:', error);
-        res.status(500).json({ success: false, message: 'Error syncing Stripe transactions' });
+        console.error('❌ Error testing Stripe connection:', error);
+        res.status(500).json({ success: false, message: 'Error testing Stripe connection: ' + error.message });
+    }
+});
+
+app.post('/api/stripe/import/customers', async (req, res) => {
+    try {
+        const stripeAPI = new StripeAPI(db);
+        const result = await stripeAPI.importCustomers();
+        res.json(result);
+    } catch (error) {
+        console.error('Error importing Stripe customers:', error);
+        res.status(500).json({ success: false, message: 'Error importing Stripe customers' });
+    }
+});
+
+app.post('/api/stripe/import/transactions', async (req, res) => {
+    try {
+        const stripeAPI = new StripeAPI(db);
+        const importAll = req.query.all === 'true';
+        const result = await stripeAPI.importTransactions(null, importAll);
+        res.json(result);
+    } catch (error) {
+        console.error('Error importing Stripe transactions:', error);
+        res.status(500).json({ success: false, message: 'Error importing Stripe transactions' });
+    }
+});
+
+app.get('/api/stripe/customers/imported', async (req, res) => {
+    try {
+        const stripeAPI = new StripeAPI(db);
+        const customers = await stripeAPI.getImportedCustomers();
+        res.json(customers);
+    } catch (error) {
+        console.error('Error fetching imported customers:', error);
+        res.status(500).json({ error: 'Failed to fetch imported customers' });
+    }
+});
+
+app.get('/api/stripe/transactions/imported', async (req, res) => {
+    try {
+        const limit = req.query.limit ? parseInt(req.query.limit) : null;
+        const offset = req.query.offset ? parseInt(req.query.offset) : 0;
+
+        const stripeAPI = new StripeAPI(db);
+        const transactions = await stripeAPI.getImportedTransactions(limit, offset);
+        const total = await stripeAPI.getTransactionsCount();
+
+        res.json({
+            transactions,
+            pagination: {
+                limit: limit || total,
+                offset,
+                total,
+                hasMore: limit ? (offset + transactions.length < total) : false
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching imported transactions:', error);
+        res.status(500).json({ error: 'Failed to fetch imported transactions' });
+    }
+});
+
+// Customer view API endpoints
+app.get('/api/stripe/customers/:id', async (req, res) => {
+    try {
+        const customer = await db.get(
+            'SELECT * FROM stripe_customers WHERE stripe_id = ?',
+            [req.params.id]
+        );
+        
+        if (!customer) {
+            return res.status(404).json({ error: 'Customer not found' });
+        }
+        
+        res.json(customer);
+    } catch (error) {
+        console.error('Error fetching customer:', error);
+        res.status(500).json({ error: 'Failed to fetch customer' });
+    }
+});
+
+app.get('/api/stripe/customers/:id/transactions', async (req, res) => {
+    try {
+        const transactions = await db.all(
+            `SELECT t.*, c.name as customer_name, c.email as customer_email
+             FROM stripe_transactions t
+             LEFT JOIN stripe_customers c ON t.customer_id = c.stripe_id
+             WHERE t.customer_id = ?
+             ORDER BY t.created DESC LIMIT 100`,
+            [req.params.id]
+        );
+        res.json(transactions);
+    } catch (error) {
+        console.error('Error fetching customer transactions:', error);
+        res.status(500).json({ error: 'Failed to fetch customer transactions' });
+    }
+});
+
+// HaloPSA API endpoints
+app.get('/api/halopsa/clients', async (req, res) => {
+    try {
+        // Get clients from our local database (already synced)
+        const clients = await db.all(`
+            SELECT id, halopsa_id, name, email, phone, address, 
+                   created_at, last_sync, raw_data
+            FROM halopsa_clients 
+            ORDER BY name
+        `);
+        
+        // Parse raw_data JSON for each client
+        const clientsWithData = clients.map(client => ({
+            ...client,
+            raw_data: client.raw_data ? JSON.parse(client.raw_data) : null
+        }));
+        
+        res.json(clientsWithData);
+    } catch (error) {
+        console.error('Error fetching synced HaloPSA clients:', error);
+        res.status(500).json({ error: 'Failed to fetch synced HaloPSA clients' });
+    }
+});
+
+app.get('/api/halopsa/reports/purchase-orders', async (req, res) => {
+    try {
+        const halopsaAPI = new HaloPSAAPI(db);
+        const result = await halopsaAPI.getPurchaseOrderReport();
+        res.json(result);
+    } catch (error) {
+        console.error('Error fetching HaloPSA purchase order report:', error);
+        res.status(500).json({ success: false, message: 'Error fetching HaloPSA purchase order report' });
+    }
+});
+
+app.get('/api/halopsa/reports/invoices', async (req, res) => {
+    try {
+        const halopsaAPI = new HaloPSAAPI(db);
+        const result = await halopsaAPI.getInvoiceReport();
+        res.json(result);
+    } catch (error) {
+        console.error('Error fetching HaloPSA invoice report:', error);
+        res.status(500).json({ success: false, message: 'Error fetching HaloPSA invoice report' });
+    }
+});
+
+app.post('/api/halopsa/import/clients', async (req, res) => {
+    try {
+        const halopsaAPI = new HaloPSAAPI(db);
+        // Wait for initialization to complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const result = await halopsaAPI.importClients();
+        res.json(result);
+    } catch (error) {
+        console.error('Error importing HaloPSA clients:', error);
+        res.status(500).json({ success: false, message: 'Error importing HaloPSA clients' });
+    }
+});
+
+app.post('/api/halopsa/import/purchase-orders', async (req, res) => {
+    try {
+        const halopsaAPI = new HaloPSAAPI(db);
+        const result = await halopsaAPI.importPurchaseOrders();
+        res.json(result);
+    } catch (error) {
+        console.error('Error importing HaloPSA purchase orders:', error);
+        res.status(500).json({ success: false, message: 'Error importing HaloPSA purchase orders' });
+    }
+});
+
+app.post('/api/halopsa/import/invoices', async (req, res) => {
+    try {
+        const halopsaAPI = new HaloPSAAPI(db);
+        const result = await halopsaAPI.importInvoices();
+        res.json(result);
+    } catch (error) {
+        console.error('Error importing HaloPSA invoices:', error);
+        res.status(500).json({ success: false, message: 'Error importing HaloPSA invoices' });
+    }
+});
+
+app.get('/api/halopsa/invoices', async (req, res) => {
+    console.log('⚠️  HaloPSA invoices endpoint hit with query:', req.query);
+    console.log('⚠️  Request URL:', req.url);
+    
+    try {
+        const { page = 1, limit = 50, search = '' } = req.query;
+        const offset = (page - 1) * limit;
+        
+        let query = 'SELECT * FROM halopsa_invoices';
+        let countQuery = 'SELECT COUNT(*) as total FROM halopsa_invoices';
+        let params = [];
+        
+        if (search) {
+            const searchCondition = ` WHERE invoice_number LIKE ? OR client_name LIKE ? OR raw_data LIKE ?`;
+            query += searchCondition;
+            countQuery += searchCondition;
+            const searchTerm = `%${search}%`;
+            params = [searchTerm, searchTerm, searchTerm];
+        }
+        
+        query += ' ORDER BY invoice_date DESC LIMIT ? OFFSET ?';
+        params.push(parseInt(limit), parseInt(offset));
+        
+        console.log('⚠️  Executing query:', query, 'with params:', params);
+        
+        const invoices = await db.query(query, params);
+        console.log('⚠️  Found', invoices.length, 'invoices');
+        
+        // Get total count (with same search conditions but without LIMIT/OFFSET)
+        const countParams = params.slice(0, params.length - 2); // Remove LIMIT/OFFSET params
+        const countResult = await db.query(countQuery, countParams);
+        const total = countResult[0]?.total || 0;
+        console.log('⚠️  Total count:', total);
+        
+        // Return paginated format
+        const response = {
+            invoices,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                pages: Math.ceil(total / limit)
+            }
+        };
+        
+        console.log('⚠️  Returning paginated response with invoices array and pagination object');
+        res.json(response);
+        
+    } catch (error) {
+        console.error('⚠️  Error fetching HaloPSA invoices:', error);
+        res.status(500).json({ success: false, message: 'Error fetching HaloPSA invoices' });
+    }
+});
+
+// =============================================================================
+// ITEM SYNC ENDPOINTS
+// =============================================================================
+
+/**
+ * POST /api/items/extract
+ * Extract items from HaloPSA invoices and purchase orders
+ */
+app.post('/api/items/extract', async (req, res) => {
+    try {
+        console.log('Starting item extraction from HaloPSA data...');
+        const itemSyncService = new ItemSyncService(db);
+        const result = await itemSyncService.extractAndSaveAllItems();
+
+        console.log('Item extraction complete:', result);
+        res.json(result);
+    } catch (error) {
+        console.error('Error extracting items:', error);
+        res.status(500).json({
+            success: false,
+            message: `Error extracting items: ${error.message}`
+        });
+    }
+});
+
+/**
+ * GET /api/items/unsynced
+ * Get items that haven't been synced to QuickBooks yet
+ */
+app.get('/api/items/unsynced', async (req, res) => {
+    try {
+        const itemSyncService = new ItemSyncService(db);
+        const items = await itemSyncService.getUnsyncedItems();
+
+        // Group by item type for easier display
+        const grouped = {
+            service: items.filter(item => item.item_type === 'ItemService'),
+            inventory: items.filter(item => item.item_type === 'ItemInventory'),
+            nonInventory: items.filter(item => item.item_type === 'ItemNonInventory')
+        };
+
+        res.json({
+            success: true,
+            items,
+            grouped,
+            counts: {
+                total: items.length,
+                service: grouped.service.length,
+                inventory: grouped.inventory.length,
+                nonInventory: grouped.nonInventory.length
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching unsynced items:', error);
+        res.status(500).json({
+            success: false,
+            message: `Error fetching unsynced items: ${error.message}`
+        });
+    }
+});
+
+/**
+ * POST /api/items/sync-to-qb
+ * Prepare items for QuickBooks Web Connector sync
+ * This endpoint generates QBXML for unsynced items
+ */
+app.post('/api/items/sync-to-qb', async (req, res) => {
+    try {
+        const itemSyncService = new ItemSyncService(db);
+        const items = await itemSyncService.getUnsyncedItems();
+
+        if (items.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No items to sync',
+                qbxml: null,
+                itemCount: 0
+            });
+        }
+
+        // Generate QBXML for all items
+        const qbxml = qbwcService.generateAllItemsQBXML(items);
+
+        // Log the sync operation
+        await itemSyncService.logSync(
+            'BATCH',
+            'MIXED',
+            'generate_qbxml',
+            'pending',
+            null,
+            qbxml,
+            null
+        );
+
+        console.log(`Generated QBXML for ${items.length} items`);
+
+        res.json({
+            success: true,
+            message: `Generated QBXML for ${items.length} items. Use QuickBooks Web Connector to complete the sync.`,
+            qbxml,
+            itemCount: items.length,
+            itemTypes: {
+                service: items.filter(i => i.item_type === 'ItemService').length,
+                inventory: items.filter(i => i.item_type === 'ItemInventory').length,
+                nonInventory: items.filter(i => i.item_type === 'ItemNonInventory').length
+            }
+        });
+    } catch (error) {
+        console.error('Error preparing items for QB sync:', error);
+        res.status(500).json({
+            success: false,
+            message: `Error preparing items for QB sync: ${error.message}`
+        });
+    }
+});
+
+/**
+ * GET /api/items/all
+ * Get all items from the database with pagination support
+ */
+app.get('/api/items/all', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 1000; // Default to large number for backward compatibility
+        const offset = parseInt(req.query.offset) || 0;
+
+        const items = await db.all(`
+            SELECT * FROM qb_items
+            ORDER BY name
+            LIMIT ? OFFSET ?
+        `, [limit, offset]);
+
+        res.json(items);
+    } catch (error) {
+        console.error('Error fetching all items:', error);
+        res.status(500).json({ error: 'Failed to fetch items' });
+    }
+});
+
+/**
+ * GET /api/customers/all
+ * Get all HaloPSA clients (source of truth) with mapping information
+ */
+app.get('/api/customers/all', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 10000; // Default to large number
+        const offset = parseInt(req.query.offset) || 0;
+
+        const clients = await db.all(`
+            SELECT
+                hc.*,
+                cm.stripe_customer_id,
+                cm.stripe_customer_name,
+                cm.stripe_customer_email,
+                cm.qb_customer_id,
+                cm.qb_customer_name,
+                cm.auto_mapped,
+                cm.mapping_confirmed
+            FROM halopsa_clients hc
+            LEFT JOIN customer_mappings cm ON hc.halopsa_id = cm.halopsa_client_id
+            ORDER BY hc.name
+            LIMIT ? OFFSET ?
+        `, [limit, offset]);
+
+        res.json(clients);
+    } catch (error) {
+        console.error('Error fetching customers:', error);
+        res.status(500).json({ error: 'Failed to fetch customers' });
+    }
+});
+
+/**
+ * GET /api/halopsa/purchase-orders
+ * Get purchase orders with pagination support
+ */
+app.get('/api/halopsa/purchase-orders', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = parseInt(req.query.offset) || 0;
+
+        console.log(`⚠️  Purchase orders endpoint hit with limit: ${limit}, offset: ${offset}`);
+
+        const purchaseOrders = await db.all(`
+            SELECT * FROM halopsa_purchase_orders
+            ORDER BY po_date DESC
+            LIMIT ? OFFSET ?
+        `, [limit, offset]);
+
+        const total = await db.get('SELECT COUNT(*) as total FROM halopsa_purchase_orders');
+
+        console.log(`⚠️  Found ${purchaseOrders.length} purchase orders, total: ${total.total}`);
+
+        res.json({
+            purchaseOrders,
+            pagination: {
+                limit,
+                offset,
+                total: total.total,
+                hasMore: offset + purchaseOrders.length < total.total
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching purchase orders:', error);
+        res.status(500).json({ error: 'Failed to fetch purchase orders' });
+    }
+});
+
+/**
+ * POST /api/mappings/stripe-invoices
+ * Auto-match Stripe transactions to HaloPSA invoices by parsing invoice numbers from descriptions
+ */
+app.post('/api/mappings/stripe-invoices', async (req, res) => {
+    try {
+        console.log('⚠️  Starting Stripe transaction to invoice mapping...');
+
+        // Fetch all Stripe transactions that haven't been mapped yet
+        const unmappedTransactions = await db.all(`
+            SELECT * FROM stripe_transactions
+            WHERE halopsa_invoice_id IS NULL AND description IS NOT NULL
+        `);
+
+        // Fetch all HaloPSA invoices for matching
+        const invoices = await db.all('SELECT id, halopsa_id, invoice_number FROM halopsa_invoices');
+
+        // Create a map of invoice numbers to invoice IDs for fast lookup
+        const invoiceMap = new Map();
+        invoices.forEach(inv => {
+            invoiceMap.set(inv.invoice_number.toLowerCase(), inv.id);
+            // Also store without special characters for fuzzy matching
+            const cleaned = inv.invoice_number.replace(/[^a-z0-9]/gi, '').toLowerCase();
+            if (cleaned) invoiceMap.set(cleaned, inv.id);
+        });
+
+        console.log(`⚠️  Found ${unmappedTransactions.length} unmapped transactions and ${invoices.length} invoices`);
+
+        const matches = [];
+        const noMatches = [];
+
+        // Common invoice number patterns in Stripe descriptions
+        const patterns = [
+            /invoice\s*#?\s*([a-z0-9\-]+)/i,     // "Invoice #12345", "Invoice 12345", "invoice INV-001"
+            /inv[-:]?\s*([a-z0-9\-]+)/i,         // "INV-12345", "INV:12345", "inv 12345"
+            /bill\s*#?\s*([a-z0-9\-]+)/i,        // "Bill #12345"
+            /ref(?:erence)?\s*#?\s*([a-z0-9\-]+)/i,  // "Ref #12345", "Reference 12345"
+            /#([a-z0-9\-]{4,})/i,                // "#INV12345"
+            /\b([a-z]{2,4}-\d{3,})\b/i           // "INV-001", "BILL-123"
+        ];
+
+        for (const tx of unmappedTransactions) {
+            let matched = false;
+            let matchedInvoiceId = null;
+            let matchPattern = null;
+
+            // Try each pattern
+            for (const pattern of patterns) {
+                const match = tx.description.match(pattern);
+                if (match && match[1]) {
+                    const extractedNumber = match[1].trim();
+
+                    // Try exact match first
+                    if (invoiceMap.has(extractedNumber.toLowerCase())) {
+                        matchedInvoiceId = invoiceMap.get(extractedNumber.toLowerCase());
+                        matchPattern = pattern.toString();
+                        matched = true;
+                        break;
+                    }
+
+                    // Try cleaned match (no special characters)
+                    const cleanedNumber = extractedNumber.replace(/[^a-z0-9]/gi, '').toLowerCase();
+                    if (cleanedNumber && invoiceMap.has(cleanedNumber)) {
+                        matchedInvoiceId = invoiceMap.get(cleanedNumber);
+                        matchPattern = pattern.toString();
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+
+            if (matched) {
+                // Update the transaction with the mapped invoice ID
+                await db.run(`
+                    UPDATE stripe_transactions
+                    SET halopsa_invoice_id = ?, mapped_to_halo = 1
+                    WHERE id = ?
+                `, [matchedInvoiceId, tx.id]);
+
+                matches.push({
+                    stripe_transaction_id: tx.stripe_id,
+                    description: tx.description,
+                    invoice_id: matchedInvoiceId,
+                    pattern: matchPattern
+                });
+            } else {
+                noMatches.push({
+                    stripe_transaction_id: tx.stripe_id,
+                    description: tx.description
+                });
+            }
+        }
+
+        console.log(`⚠️  Mapping complete: ${matches.length} matched, ${noMatches.length} not matched`);
+
+        res.json({
+            success: true,
+            matched: matches.length,
+            unmatched: noMatches.length,
+            total: unmappedTransactions.length,
+            matches,
+            noMatches: noMatches.slice(0, 10) // Return first 10 unmatched for debugging
+        });
+    } catch (error) {
+        console.error('Error mapping Stripe transactions to invoices:', error);
+        res.status(500).json({ error: 'Failed to map transactions', message: error.message });
+    }
+});
+
+/**
+ * GET /api/mappings/stripe-invoices
+ * Get all Stripe transactions that have been mapped to HaloPSA invoices
+ */
+app.get('/api/mappings/stripe-invoices', async (req, res) => {
+    try {
+        const mappedTransactions = await db.all(`
+            SELECT
+                st.id,
+                st.stripe_id,
+                st.description,
+                st.amount,
+                st.currency,
+                st.created,
+                st.halopsa_invoice_id,
+                hi.invoice_number,
+                hi.client_name,
+                hi.total_amount as invoice_amount,
+                hi.invoice_date,
+                hi.status as invoice_status
+            FROM stripe_transactions st
+            INNER JOIN halopsa_invoices hi ON st.halopsa_invoice_id = hi.id
+            WHERE st.mapped_to_halo = 1
+            ORDER BY st.created DESC
+        `);
+
+        res.json({
+            success: true,
+            count: mappedTransactions.length,
+            mappings: mappedTransactions
+        });
+    } catch (error) {
+        console.error('Error fetching mapped transactions:', error);
+        res.status(500).json({ error: 'Failed to fetch mapped transactions' });
+    }
+});
+
+// Create a singleton HaloPSA API instance
+let halopsaAPIInstance = null;
+let initializationPromise = null;
+
+// Initialize or update the HaloPSA API instance
+async function getHaloPSAAPI() {
+    // Ensure database is ready first
+    await db.ready;
+    
+    // If instance doesn't exist or initialization is in progress
+    if (!halopsaAPIInstance || initializationPromise) {
+        if (!initializationPromise) {
+            console.log('Creating new HaloPSA API instance...');
+            initializationPromise = (async () => {
+                const instance = new HaloPSAAPI(db, configAPI);
+                await instance.initialize();
+                halopsaAPIInstance = instance;
+                initializationPromise = null;
+                console.log('HaloPSA API instance created and initialized');
+                return instance;
+            })();
+        }
+        return await initializationPromise;
+    } else {
+        // Instance exists, re-initialize with latest config
+        console.log('Re-initializing existing HaloPSA API instance...');
+        
+        // Always create a fresh instance to ensure latest code is used
+        console.log('Creating fresh HaloPSA API instance to ensure latest code...');
+        const freshInstance = new HaloPSAAPI(db, configAPI);
+        await freshInstance.initialize();
+        halopsaAPIInstance = freshInstance;
+        
+        return halopsaAPIInstance;
+    }
+}
+
+// Update configuration endpoint to refresh the API instance
+app.post('/api/config', async (req, res) => {
+    try {
+        const updates = req.body;
+        console.log('Updating configuration:', Object.keys(updates));
+        
+        for (const [key, value] of Object.entries(updates)) {
+            await db.setConfig(key, value);
+        }
+        
+        // Reset the cached HaloPSA API instance when configuration changes
+        halopsaAPIInstance = null;
+        console.log('HaloPSA API cache reset due to configuration changes');
+        
+        // Refresh the HaloPSA API instance if HaloPSA config was updated
+        if (Object.keys(updates).some(key => key.startsWith('halopsa_'))) {
+            console.log('HaloPSA configuration updated, refreshing API instance...');
+            if (halopsaAPIInstance) {
+                await halopsaAPIInstance.initialize();
+            }
+        }
+        
+        res.json({ success: true, message: 'Configuration updated successfully', updates });
+    } catch (error) {
+        console.error('Error updating configuration:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/halopsa/test', async (req, res) => {
+    const requestId = Math.random().toString(36).substr(2, 6);
+    console.log(`=== HaloPSA Test Request ${requestId} ===`);
+    
+    try {
+        const halopsaAPI = await getHaloPSAAPI();
+        const result = await halopsaAPI.testConnection();
+        console.log(`✅ HaloPSA Test Request ${requestId} Raw Result:`, result);
+        
+        // Log the exact response being sent
+        console.log(`📤 HaloPSA Test Request ${requestId} Sending Response:`, JSON.stringify(result));
+        res.json(result);
+    } catch (error) {
+        console.error(`❌ HaloPSA Test Request ${requestId} Error:`, error);
+        res.status(500).json({ success: false, message: 'Error testing HaloPSA connection' });
+    }
+});
+
+app.post('/api/halopsa/obtain-token', async (req, res) => {
+    try {
+        const halopsaAPI = new HaloPSAAPI(db);
+        console.log('HaloPSA API instance created for token request');
+        
+        // Diagnostic: check current state
+        const config = await halopsaAPI.getConfig();
+        console.log('Current HaloPSA config:', {
+            apiUrl: config.halopsa_api_url,
+            clientId: config.halopsa_client_id ? '***' : 'missing',
+            clientSecret: config.halopsa_client_secret ? '***' : 'missing'
+        });
+        
+        const result = await halopsaAPI.getAccessTokenViaClientCredentials();
+        res.json(result);
+    } catch (error) {
+        console.error('Error obtaining HaloPSA token:', error);
+        res.status(500).json({ success: false, message: 'Error obtaining HaloPSA token' });
+    }
+});
+
+app.get('/api/halopsa/debug', async (req, res) => {
+    try {
+        const halopsaAPI = new HaloPSAAPI(db);
+        const config = await halopsaAPI.getConfig();
+        res.json({
+            config: {
+                apiUrl: config.halopsa_api_url,
+                clientId: config.halopsa_client_id,
+                clientSecret: config.halopsa_client_secret,
+                accessToken: config.halopsa_access_token
+            },
+            instanceState: {
+                clientId: halopsaAPI.clientId,
+                clientSecret: halopsaAPI.clientSecret ? '***' : 'missing',
+                apiUrl: halopsaAPI.apiUrl,
+                accessToken: halopsaAPI.accessToken
+            },
+            troubleshooting: {
+                message: "If you're getting 'invalid_client' errors:",
+                steps: [
+                    "1. Log into HaloPSA at https://psa.dtctoday.com",
+                    "2. Go to Configuration > Integrations > Halo API",
+                    "3. Verify your application is registered with Client ID: 75a64418-eb08-4b0b-81c3-bff949bdba5a",
+                    "4. Ensure 'Client Credentials' grant type is enabled for your application",
+                    "5. Verify the client secret is correct",
+                    "6. Make sure your application has the necessary scopes/permissions"
+                ],
+                authEndpoint: "https://psa.dtctoday.com/auth/token",
+                apiEndpoint: "https://psa.dtctoday.com/api"
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -1370,36 +2252,93 @@ app.get('/api/stripe/transactions', async (req, res) => {
 app.get('/api/stripe/customers', async (req, res) => {
     try {
         const stripeAPI = new StripeAPI(db);
-        const customers = await stripeAPI.getCustomers();
-        res.json(customers);
+        // Use imported customers from local database instead of direct Stripe API calls
+        let customers = await stripeAPI.getImportedCustomers();
+        
+        console.log(`[DEBUG] Fetched ${customers.length} customers from database`);
+        if (customers.length > 0) {
+            console.log(`[DEBUG] First customer: ${customers[0].name} (${customers[0].email})`);
+        }
+        
+        // Transform the data structure to match what the frontend expects
+        const transformedCustomers = customers.map(customer => ({
+            id: customer.stripe_id,  // Use stripe_id as the identifier for the frontend
+            stripe_id: customer.stripe_id,
+            name: customer.name,
+            email: customer.email,
+            phone: customer.phone,
+            description: customer.description
+        }));
+        
+        res.json(transformedCustomers);
     } catch (error) {
         console.error('Error fetching Stripe customers:', error);
         res.status(500).json({ error: 'Failed to fetch customers' });
     }
 });
 
-app.get('/api/halopsa/clients', async (req, res) => {
-    try {
-        const halopsaAPI = new HaloPSAAPI(db);
-        const clients = await halopsaAPI.getClients();
-        res.json(clients);
-    } catch (error) {
-        console.error('Error fetching HaloPSA clients:', error);
-        res.status(500).json({ error: 'Failed to fetch clients' });
-    }
-});
-
 app.post('/api/customers/map', async (req, res) => {
     try {
         const { stripe_customer_id, halopsa_client_id } = req.body;
-        await db.run(
-            'INSERT OR REPLACE INTO customer_mappings (stripe_customer_id, halopsa_client_id, mapping_confirmed, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
-            [stripe_customer_id, halopsa_client_id, true]
+        
+        if (!stripe_customer_id || !halopsa_client_id) {
+            return res.status(400).json({ error: 'stripe_customer_id and halopsa_client_id are required' });
+        }
+        
+        // Check if stripe customer is already mapped
+        const existingMapping = await db.get(
+            'SELECT * FROM customer_mappings WHERE stripe_customer_id = ? AND mapping_confirmed = 1',
+            [stripe_customer_id]
         );
+        
+        if (existingMapping) {
+            return res.status(400).json({ error: 'Stripe customer is already mapped to another HaloPSA client' });
+        }
+        
+        // Check if halo client is already mapped
+        const halopsaClientIdNum = Math.floor(Number(halopsa_client_id));
+        const existingHaloMapping = await db.get(
+            'SELECT * FROM customer_mappings WHERE halopsa_client_id = ? AND mapping_confirmed = 1',
+            [halopsaClientIdNum]
+        );
+        
+        if (existingHaloMapping) {
+            return res.status(400).json({ error: 'HaloPSA client is already mapped to another Stripe customer' });
+        }
+        
+        // Get customer details for the mapping record
+        const stripeCustomer = await db.get(
+            'SELECT name, email FROM stripe_customers WHERE stripe_id = ?',
+            [stripe_customer_id]
+        );
+        
+        const haloClient = await db.get(
+            'SELECT name FROM halopsa_clients WHERE halopsa_id = ?',
+            [halopsa_client_id]
+        );
+        
+        await db.run(
+            `INSERT INTO customer_mappings 
+             (stripe_customer_id, stripe_customer_email, stripe_customer_name, 
+              halopsa_client_id, halopsa_client_name, auto_mapped, mapping_confirmed)
+             VALUES (?, ?, ?, ?, ?, CAST(? AS BOOLEAN), CAST(? AS BOOLEAN))`,
+            [
+                stripe_customer_id,
+                stripeCustomer?.email || '',
+                stripeCustomer?.name || '',
+                halopsaClientIdNum,
+                haloClient?.name || '',
+                0, // Not auto-mapped (user confirmed) - use 0 instead of false
+                1   // mapping_confirmed - use 1 instead of true
+            ]
+        );
+        
         res.json({ success: true, message: 'Customer mapping saved' });
     } catch (error) {
         console.error('Error saving customer mapping:', error);
-        res.status(500).json({ error: 'Failed to save mapping' });
+        console.error('Error details:', error.message);
+        console.error('Error stack:', error.stack);
+        res.status(500).json({ error: 'Failed to save mapping: ' + error.message });
     }
 });
 
@@ -1415,63 +2354,1598 @@ app.get('/api/customers/mappings', async (req, res) => {
 
 app.post('/api/customers/automatch', async (req, res) => {
     try {
-        const halopsaAPI = new HaloPSAAPI(db);
         const stripeAPI = new StripeAPI(db);
         
-        const stripeCustomers = await stripeAPI.getCustomers();
-        const haloClients = await halopsaAPI.getClients();
+        // Get threshold from configuration
+        const thresholdRow = await db.get('SELECT value FROM config WHERE key = ?', ['customer_match_threshold']);
+        const threshold = thresholdRow && thresholdRow.value ? parseFloat(thresholdRow.value) : 0.55;
         
-        const matches = [];
+        console.log('Automatching with threshold:', threshold);
         
-        for (const stripeCustomer of stripeCustomers) {
-            let bestMatch = null;
-            let bestScore = 0;
+        // Get page parameters and ensure they're integers
+        const { page = 1, pageSize = 50, forceFullScan = false } = req.body;
+        const pageInt = Number.parseInt(page) || 1;
+        const pageSizeInt = Number.parseInt(pageSize) || 50;
+        const offset = Math.max(0, (pageInt - 1) * pageSizeInt);
+        
+        // Ensure integers are passed as integers, not floats
+        const sqlPageSize = Math.floor(pageSizeInt);
+        const sqlOffset = Math.floor(offset);
+        
+        console.log('Page params:', { page, pageInt, pageSize, pageSizeInt, offset });
+        
+        // Handle backward compatibility - if no pagination params, do a limited scan
+        if (!req.body.page && !forceFullScan) {
+            console.log('Legacy automatch call detected - performing limited scan');
+            return await performLegacyAutomatch(res, stripeAPI, db, threshold);
+        }
+        
+        // Get existing mappings to avoid duplicates
+        const existingMappings = await db.all(`
+            SELECT stripe_customer_id, halopsa_client_id, mapping_confirmed 
+            FROM customer_mappings 
+            WHERE mapping_confirmed = 1
+        `);
+        
+        const stripeMapped = new Set(existingMappings.map(m => m.stripe_customer_id));
+        const haloMapped = new Set(existingMappings.map(m => m.halopsa_client_id.toString()));
+        
+        // Handle empty mapped sets (SQL doesn't like IN () with empty list)
+        // Convert all IDs to strings to avoid datatype mismatch
+        const stripeMappedStrings = Array.from(stripeMapped).map(id => id.toString());
+        const haloMappedStrings = Array.from(haloMapped).map(id => id.toString());
+        
+        const stripeWhereClause = stripeMappedStrings.length > 0 
+            ? `AND stripe_id NOT IN (${stripeMappedStrings.map(() => '?').join(',')})`
+            : '';
+        const haloWhereClause = haloMappedStrings.length > 0 
+            ? `WHERE halopsa_id NOT IN (${haloMappedStrings.map(() => '?').join(',')})`
+            : '';
+        
+        // Get paginated stripe customers (only unmapped ones with valid names)
+        const stripeQuery = `
+            SELECT * FROM stripe_customers 
+            WHERE name IS NOT NULL AND name != 'null' 
+            ${stripeWhereClause}
+            ORDER BY name
+            LIMIT ? OFFSET ?
+        `;
+        const stripeParams = stripeMappedStrings.length > 0 
+            ? [...stripeMappedStrings, sqlPageSize, sqlOffset]
+            : [sqlPageSize, sqlOffset];
             
-            for (const haloClient of haloClients) {
-                const score = calculateMatchScore(stripeCustomer, haloClient);
-                if (score > bestScore && score > 0.7) {
-                    bestScore = score;
-                    bestMatch = haloClient;
+        console.log('SQL Query:', stripeQuery);
+        console.log('SQL Params:', stripeParams);
+        
+        const stripeCustomers = await db.all(stripeQuery, stripeParams);
+        
+        // Get all halo clients (they're fewer, so we can load them all)
+        const haloQuery = `
+            SELECT id, halopsa_id, name, email, phone, address, 
+                   created_at, last_sync, raw_data
+            FROM halopsa_clients 
+            ${haloWhereClause}
+        `;
+        const haloParams = haloMappedStrings.length > 0 ? [...haloMappedStrings] : [];
+        const haloClients = await db.all(haloQuery, haloParams);
+        
+        console.log(`Automatch page ${page}: ${stripeCustomers.length} stripe customers, ${haloClients.length} halo clients`);
+        
+        const startTime = Date.now();
+        const matches = [];
+        const conflicts = [];
+        
+        // Pre-calculate name lowercases and word sets for performance
+        const haloClientCache = haloClients.map(client => ({
+            ...client,
+            nameLower: client.name ? client.name.toLowerCase() : '',
+            words: client.name ? new Set(client.name.toLowerCase().split(/\s+/).filter(w => w.length > 2)) : new Set()
+        }));
+        
+        // Batch processing with performance monitoring
+        let comparisons = 0;
+        for (const stripeCustomer of stripeCustomers) {
+            const stripeNameLower = stripeCustomer.name.toLowerCase();
+            const stripeWords = new Set(stripeNameLower.split(/\s+/).filter(w => w.length > 2));
+            
+            const customerMatches = [];
+            
+            for (const haloClient of haloClientCache) {
+                comparisons++;
+                const score = calculateMatchScoreOptimized(stripeCustomer, haloClient, stripeNameLower, stripeWords);
+                if (score >= threshold) {
+                    customerMatches.push({
+                        halo_client: haloClient,
+                        score: score
+                    });
                 }
             }
             
-            if (bestMatch) {
+            customerMatches.sort((a, b) => b.score - a.score);
+            
+            if (customerMatches.length === 1) {
                 matches.push({
                     stripe_customer: stripeCustomer,
-                    halo_client: bestMatch,
-                    match_score: bestScore
+                    halo_client: customerMatches[0].halo_client,
+                    match_score: customerMatches[0].score,
+                    type: 'suggestion'
+                });
+            } else if (customerMatches.length > 1) {
+                conflicts.push({
+                    stripe_customer: stripeCustomer,
+                    potential_matches: customerMatches,
+                    type: 'conflict'
                 });
             }
         }
         
-        res.json({ success: true, matches: matches });
+        const processingTime = Date.now() - startTime;
+        
+        // Get total counts for pagination info
+        const totalStripeQuery = `
+            SELECT COUNT(*) as total FROM stripe_customers 
+            WHERE name IS NOT NULL AND name != 'null' 
+            ${stripeWhereClause}
+        `;
+        const totalStripeParams = stripeMappedStrings.length > 0 ? [...stripeMappedStrings] : [];
+        const totalStripeCount = await db.get(totalStripeQuery, totalStripeParams);
+        
+        const totalPages = Math.ceil(totalStripeCount.total / pageSize);
+        
+        console.log(`Processed ${comparisons} comparisons in ${processingTime}ms`);
+        
+        // Second pass: find best matches for each halo client (to catch reverse conflicts)
+        for (const haloClient of haloClients) {
+            const clientMatches = [];
+            
+            for (const stripeCustomer of stripeCustomers) {
+                const score = calculateMatchScoreOptimized(stripeCustomer, haloClient, 
+                    stripeCustomer.name ? stripeCustomer.name.toLowerCase() : '', 
+                    stripeCustomer.name ? new Set(stripeCustomer.name.toLowerCase().split(/\s+/).filter(w => w.length > 2)) : new Set()
+                );
+                if (score >= threshold) {
+                    clientMatches.push({
+                        stripe_customer: stripeCustomer,
+                        score: score
+                    });
+                }
+            }
+            
+            // Sort matches by score (highest first)
+            clientMatches.sort((a, b) => b.score - a.score);
+            
+            if (clientMatches.length > 1) {
+                // Check if this creates new conflicts not already captured
+                const newConflict = {
+                    halo_client: haloClient,
+                    potential_matches: clientMatches,
+                    type: 'conflict_reverse'
+                };
+                
+                // Only add if not already in conflicts from stripe perspective
+                const conflictExists = conflicts.some(conflict => 
+                    conflict.stripe_customer && 
+                    clientMatches.some(match => match.stripe_customer.stripe_id === conflict.stripe_customer.stripe_id)
+                );
+                
+                if (!conflictExists) {
+                    conflicts.push(newConflict);
+                }
+            }
+        }
+        
+        console.log(`Found ${matches.length} suggestions and ${conflicts.length} conflicts`);
+        
+        // Return results with pagination info
+        res.json({ 
+            success: true, 
+            matches: matches, // Old format for frontend compatibility
+            suggestions: matches, // New format
+            conflicts: conflicts, 
+            threshold: threshold,
+            pagination: {
+                page: pageInt,
+                pageSize: pageSizeInt,
+                totalPages: totalPages,
+                totalStripeCustomers: totalStripeCount.total,
+                hasMore: pageInt < totalPages
+            },
+            performance: {
+                processingTime: processingTime,
+                comparisons: comparisons,
+                matchesPerSecond: comparisons > 0 ? Math.round((comparisons / processingTime) * 1000) : 0
+            },
+            summary: {
+                total_suggestions: matches.length,
+                total_conflicts: conflicts.length,
+                unmatched_stripe_customers: totalStripeCount.total - matches.length - conflicts.filter(c => c.stripe_customer).length,
+                unmatched_halo_clients: haloClients.length - matches.length - conflicts.filter(c => c.halo_client).length
+            }
+        });
     } catch (error) {
         console.error('Error auto-matching customers:', error);
-        res.status(500).json({ error: 'Failed to auto-match customers' });
+        console.error('Error details:', error.message);
+        console.error('Error stack:', error.stack);
+        res.status(500).json({ error: 'Failed to auto-match customers: ' + error.message });
     }
 });
 
-// Helper function for customer matching
-function calculateMatchScore(stripeCustomer, haloClient) {
+// QuickBooks to HaloPSA Auto-match endpoint
+app.post('/api/quickbooks/automatch', async (req, res) => {
+    try {
+        // Get threshold from configuration
+        const thresholdRow = await db.get('SELECT value FROM config WHERE key = ?', ['customer_match_threshold']);
+        const threshold = thresholdRow && thresholdRow.value ? parseFloat(thresholdRow.value) : 0.55;
+
+        console.log('QuickBooks automatch with threshold:', threshold);
+
+        // Get existing QB-to-Halo mappings
+        const existingMappings = await db.all(`
+            SELECT qb_customer_id, halopsa_client_id, mapping_confirmed
+            FROM customer_mappings
+            WHERE qb_customer_id IS NOT NULL AND halopsa_client_id IS NOT NULL AND mapping_confirmed = 1
+        `);
+
+        const qbMapped = new Set(existingMappings.map(m => m.qb_customer_id));
+        const haloMapped = new Set(existingMappings.map(m => m.halopsa_client_id?.toString()));
+
+        // Convert all IDs to strings
+        const qbMappedStrings = Array.from(qbMapped).filter(id => id).map(id => id.toString());
+        const haloMappedStrings = Array.from(haloMapped).filter(id => id).map(id => id.toString());
+
+        const qbWhereClause = qbMappedStrings.length > 0
+            ? `AND qb_list_id NOT IN (${qbMappedStrings.map(() => '?').join(',')})`
+            : '';
+        const haloWhereClause = haloMappedStrings.length > 0
+            ? `WHERE halopsa_id NOT IN (${haloMappedStrings.map(() => '?').join(',')})`
+            : '';
+
+        // Get unmapped QB customers
+        const qbQuery = `
+            SELECT * FROM qb_customers
+            WHERE (qb_full_name IS NOT NULL AND qb_full_name != '' AND qb_full_name != 'null')
+            OR (company_name IS NOT NULL AND company_name != '' AND company_name != 'null')
+            ${qbWhereClause}
+            ORDER BY qb_full_name
+        `;
+        const qbParams = qbMappedStrings.length > 0 ? [...qbMappedStrings] : [];
+        const qbCustomers = await db.all(qbQuery, qbParams);
+
+        // Get all unmapped halo clients
+        const haloQuery = `
+            SELECT id, halopsa_id, name, email, phone, address_line1,
+                   created_at, last_sync, raw_data
+            FROM halopsa_clients
+            ${haloWhereClause}
+        `;
+        const haloParams = haloMappedStrings.length > 0 ? [...haloMappedStrings] : [];
+        const haloClients = await db.all(haloQuery, haloParams);
+
+        console.log(`QB Automatch: ${qbCustomers.length} QB customers, ${haloClients.length} halo clients`);
+
+        const startTime = Date.now();
+        const matches = [];
+        const conflicts = [];
+
+        // Pre-calculate name lowercases and word sets for performance
+        const haloClientCache = haloClients.map(client => ({
+            ...client,
+            nameLower: client.name ? client.name.toLowerCase() : '',
+            words: client.name ? new Set(client.name.toLowerCase().split(/\s+/).filter(w => w.length > 2)) : new Set()
+        }));
+
+        let comparisons = 0;
+        for (const qbCustomer of qbCustomers) {
+            // Use qb_full_name or company_name
+            const qbName = qbCustomer.company_name || qbCustomer.qb_full_name || '';
+            if (!qbName) continue;
+
+            const qbNameLower = qbName.toLowerCase();
+            const qbWords = new Set(qbNameLower.split(/\s+/).filter(w => w.length > 2));
+
+            const customerMatches = [];
+
+            for (const haloClient of haloClientCache) {
+                comparisons++;
+                const score = calculateQBMatchScore(qbCustomer, haloClient, qbNameLower, qbWords);
+                if (score >= threshold) {
+                    customerMatches.push({
+                        halo_client: haloClient,
+                        score: score
+                    });
+                }
+            }
+
+            customerMatches.sort((a, b) => b.score - a.score);
+
+            if (customerMatches.length === 1) {
+                matches.push({
+                    qb_customer: qbCustomer,
+                    halo_client: customerMatches[0].halo_client,
+                    match_score: customerMatches[0].score,
+                    type: 'suggestion'
+                });
+            } else if (customerMatches.length > 1) {
+                conflicts.push({
+                    qb_customer: qbCustomer,
+                    potential_matches: customerMatches,
+                    type: 'conflict'
+                });
+            }
+        }
+
+        const processingTime = Date.now() - startTime;
+
+        console.log(`Processed ${comparisons} comparisons in ${processingTime}ms`);
+
+        res.json({
+            success: true,
+            matches: matches,
+            conflicts: conflicts,
+            threshold: threshold,
+            performance: {
+                processingTime: processingTime,
+                comparisons: comparisons,
+                matchesPerSecond: comparisons > 0 ? Math.round((comparisons / processingTime) * 1000) : 0
+            },
+            summary: {
+                total_suggestions: matches.length,
+                total_conflicts: conflicts.length,
+                unmatched_qb_customers: qbCustomers.length - matches.length - conflicts.length,
+                unmatched_halo_clients: haloClients.length - matches.length
+            }
+        });
+    } catch (error) {
+        console.error('Error QB auto-matching:', error);
+        res.status(500).json({ error: 'Failed to QB auto-match: ' + error.message });
+    }
+});
+
+// Save QB to HaloPSA mapping
+app.post('/api/quickbooks/save-mapping', async (req, res) => {
+    try {
+        const { qb_customer_id, halopsa_client_id } = req.body;
+
+        if (!qb_customer_id || !halopsa_client_id) {
+            return res.status(400).json({ error: 'QB customer ID and HaloPSA client ID are required' });
+        }
+
+        // Check if QB customer is already mapped
+        const existingMapping = await db.get(
+            'SELECT * FROM customer_mappings WHERE qb_customer_id = ? AND mapping_confirmed = 1',
+            [qb_customer_id]
+        );
+
+        if (existingMapping) {
+            return res.status(400).json({ error: 'QB customer is already mapped' });
+        }
+
+        // Check if halo client is already mapped to QB
+        const halopsaClientIdNum = Math.floor(Number(halopsa_client_id));
+        const existingHaloMapping = await db.get(
+            'SELECT * FROM customer_mappings WHERE halopsa_client_id = ? AND qb_customer_id IS NOT NULL AND mapping_confirmed = 1',
+            [halopsaClientIdNum]
+        );
+
+        if (existingHaloMapping) {
+            return res.status(400).json({ error: 'HaloPSA client is already mapped to another QB customer' });
+        }
+
+        // Get customer details
+        const qbCustomer = await db.get(
+            'SELECT qb_full_name, company_name, email FROM qb_customers WHERE qb_list_id = ?',
+            [qb_customer_id]
+        );
+
+        const haloClient = await db.get(
+            'SELECT name FROM halopsa_clients WHERE halopsa_id = ?',
+            [halopsaClientIdNum]
+        );
+
+        await db.run(
+            `INSERT INTO customer_mappings
+             (qb_customer_id, qb_customer_name, halopsa_client_id, halopsa_client_name,
+              auto_mapped, mapping_confirmed, mapping_source)
+             VALUES (?, ?, ?, ?, 0, 1, 'quickbooks')`,
+            [
+                qb_customer_id,
+                qbCustomer?.company_name || qbCustomer?.qb_full_name || null,
+                halopsaClientIdNum,
+                haloClient?.name || null
+            ]
+        );
+
+        res.json({ success: true, message: 'QB customer mapping saved' });
+    } catch (error) {
+        console.error('Error saving QB mapping:', error);
+        res.status(500).json({ error: 'Failed to save QB mapping: ' + error.message });
+    }
+});
+
+// Calculate match score for QB customers
+function calculateQBMatchScore(qbCustomer, haloClient, qbNameLower, qbWords) {
+    let score = 0;
+
+    // Email match
+    if (qbCustomer.email && haloClient.email) {
+        try {
+            const email1 = qbCustomer.email.toLowerCase().trim();
+            const email2 = haloClient.email.toLowerCase().trim();
+            if (email1 === email2) {
+                score += 0.8;
+            }
+        } catch (e) {
+            // Email comparison failed, continue with name matching
+        }
+    }
+
+    // Name matching using pre-calculated values
+    if (qbNameLower && haloClient.nameLower) {
+        try {
+            // Exact match
+            if (qbNameLower === haloClient.nameLower) {
+                score += 0.8;
+            }
+            // One name is a clear subset of the other
+            else if (isClearSubset(qbNameLower, haloClient.nameLower)) {
+                score += 0.7;
+            }
+            // Contains match
+            else if (qbNameLower.includes(haloClient.nameLower) || haloClient.nameLower.includes(qbNameLower)) {
+                score += 0.6;
+            }
+            // Word overlap using pre-calculated sets
+            else if (qbWords && haloClient.words) {
+                const intersection = new Set([...qbWords].filter(x => haloClient.words.has(x)));
+                const union = new Set([...qbWords, ...haloClient.words]);
+
+                if (union.size > 0) {
+                    const overlap = intersection.size / union.size;
+                    if (overlap > 0.8) score += 0.6;
+                    else if (overlap > 0.6) score += 0.4;
+                    else if (overlap > 0.4) score += 0.3;
+                }
+            }
+        } catch (e) {
+            // Name matching failed, continue without adding score
+            console.warn('QB name matching error:', e.message);
+        }
+    }
+
+    return Math.min(score, 1.0);
+}
+
+// Legacy automatch for backward compatibility
+async function performLegacyAutomatch(res, stripeAPI, db, threshold) {
+    try {
+        console.log('Performing legacy automatch (limited to 100 customers)');
+        
+        // Get existing mappings
+        const existingMappings = await db.all(`
+            SELECT stripe_customer_id, halopsa_client_id, mapping_confirmed 
+            FROM customer_mappings 
+            WHERE mapping_confirmed = 1
+        `);
+        
+        const stripeMapped = new Set(existingMappings.map(m => m.stripe_customer_id));
+        const haloMapped = new Set(existingMappings.map(m => m.halopsa_client_id.toString()));
+        
+        // Handle empty mapped sets - convert all IDs to strings
+        const stripeMappedStrings = Array.from(stripeMapped).map(id => id.toString());
+        const haloMappedStrings = Array.from(haloMapped).map(id => id.toString());
+        
+        const stripeWhereClause = stripeMappedStrings.length > 0 
+            ? `AND stripe_id NOT IN (${stripeMappedStrings.map(() => '?').join(',')})`
+            : '';
+        const haloWhereClause = haloMappedStrings.length > 0 
+            ? `WHERE halopsa_id NOT IN (${haloMappedStrings.map(() => '?').join(',')})`
+            : '';
+        
+        // Get limited stripe customers for performance
+        const stripeQuery = `
+            SELECT * FROM stripe_customers 
+            WHERE name IS NOT NULL AND name != 'null' 
+            ${stripeWhereClause}
+            ORDER BY name
+            LIMIT 100
+        `;
+        const stripeParams = stripeMappedStrings.length > 0 ? [...stripeMappedStrings] : [];
+        const stripeCustomers = await db.all(stripeQuery, stripeParams);
+        
+        // Get all unmapped halo clients
+        const haloQuery = `
+            SELECT id, halopsa_id, name, email, phone, address, 
+                   created_at, last_sync, raw_data
+            FROM halopsa_clients 
+            ${haloWhereClause}
+        `;
+        const haloParams = haloMappedStrings.length > 0 ? [...haloMappedStrings] : [];
+        const haloClients = await db.all(haloQuery, haloParams);
+        
+        console.log(`Legacy automatch: ${stripeCustomers.length} stripe customers, ${haloClients.length} halo clients`);
+        
+        const matches = [];
+        const conflicts = [];
+        
+        for (const stripeCustomer of stripeCustomers) {
+            const customerMatches = [];
+            
+            for (const haloClient of haloClients) {
+                const score = calculateMatchScore(stripeCustomer, haloClient);
+                if (score >= threshold) {
+                    customerMatches.push({
+                        halo_client: haloClient,
+                        score: score
+                    });
+                }
+            }
+            
+            customerMatches.sort((a, b) => b.score - a.score);
+            
+            if (customerMatches.length === 1) {
+                matches.push({
+                    stripe_customer: stripeCustomer,
+                    halo_client: customerMatches[0].halo_client,
+                    match_score: customerMatches[0].score,
+                    type: 'suggestion'
+                });
+            } else if (customerMatches.length > 1) {
+                conflicts.push({
+                    stripe_customer: stripeCustomer,
+                    potential_matches: customerMatches,
+                    type: 'conflict'
+                });
+            }
+        }
+        
+        console.log(`Legacy automatch complete: ${matches.length} matches, ${conflicts.length} conflicts`);
+        
+        res.json({ 
+            success: true, 
+            matches: matches,
+            suggestions: matches,
+            conflicts: conflicts,
+            threshold: threshold,
+            summary: {
+                total_suggestions: matches.length,
+                total_conflicts: conflicts.length
+            },
+            note: 'This is a limited scan. Use paginated API for full dataset.'
+        });
+        
+    } catch (error) {
+        console.error('Error in legacy automatch:', error);
+        console.error('Legacy error details:', error.message);
+        console.error('Legacy error stack:', error.stack);
+        res.status(500).json({ error: 'Failed to perform automatch: ' + error.message });
+    }
+}
+
+// Save/approve customer mappings
+app.post('/api/customers/mappings/save', async (req, res) => {
+    try {
+        const { mappings, batch = false } = req.body;
+        
+        if (!mappings || !Array.isArray(mappings)) {
+            return res.status(400).json({ error: 'Mappings array is required' });
+        }
+        
+        const results = [];
+        
+        for (const mapping of mappings) {
+            try {
+                const { stripe_customer_id, halopsa_client_id, auto_mapped = false, mapping_confirmed = true } = mapping;
+                
+                if (!stripe_customer_id || !halopsa_client_id) {
+                    results.push({
+                        success: false,
+                        error: 'stripe_customer_id and halopsa_client_id are required',
+                        mapping: mapping
+                    });
+                    continue;
+                }
+                
+                // Check if stripe customer is already mapped
+                const existingMapping = await db.get(
+                    'SELECT * FROM customer_mappings WHERE stripe_customer_id = ?',
+                    [stripe_customer_id]
+                );
+                
+                if (existingMapping && existingMapping.mapping_confirmed) {
+                    results.push({
+                        success: false,
+                        error: 'Stripe customer is already mapped to another HaloPSA client',
+                        mapping: mapping
+                    });
+                    continue;
+                }
+                
+                // Check if halo client is already mapped
+                // Ensure halopsa_client_id is an integer (not a float)
+                const halopsaClientIdNum = Math.floor(Number(halopsa_client_id));
+                const existingHaloMapping = await db.get(
+                    'SELECT * FROM customer_mappings WHERE halopsa_client_id = ? AND mapping_confirmed = 1',
+                    [halopsaClientIdNum]
+                );
+                
+                if (existingHaloMapping) {
+                    results.push({
+                        success: false,
+                        error: 'HaloPSA client is already mapped to another Stripe customer',
+                        mapping: mapping
+                    });
+                    continue;
+                }
+                
+                // Get customer details for the mapping record
+                const stripeCustomer = await db.get(
+                    'SELECT name, email FROM stripe_customers WHERE stripe_id = ?',
+                    [stripe_customer_id]
+                );
+                
+                const haloClient = await db.get(
+                    'SELECT name FROM halopsa_clients WHERE halopsa_id = ?',
+                    [halopsa_client_id]
+                );
+                
+                if (existingMapping) {
+                    // Update existing mapping - use integers for boolean values
+                    await db.run(
+                        `UPDATE customer_mappings 
+                         SET halopsa_client_id = ?, halopsa_client_name = ?, 
+                             auto_mapped = ?, mapping_confirmed = ?,
+                             updated_at = CURRENT_TIMESTAMP
+                         WHERE stripe_customer_id = ?`,
+                        [halopsaClientIdNum, haloClient?.name || '', auto_mapped ? 1 : 0, mapping_confirmed ? 1 : 0, stripe_customer_id]
+                    );
+                } else {
+                    // Insert new mapping - use integers for boolean values
+                    await db.run(
+                        `INSERT INTO customer_mappings 
+                         (stripe_customer_id, stripe_customer_email, stripe_customer_name, 
+                          halopsa_client_id, halopsa_client_name, auto_mapped, mapping_confirmed)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            stripe_customer_id,
+                            stripeCustomer?.email || '',
+                            stripeCustomer?.name || '',
+                            halopsaClientIdNum,
+                            haloClient?.name || '',
+                            auto_mapped ? 1 : 0,
+                            mapping_confirmed ? 1 : 0
+                        ]
+                    );
+                }
+                
+                results.push({
+                    success: true,
+                    mapping: mapping
+                });
+                
+            } catch (error) {
+                results.push({
+                    success: false,
+                    error: error.message,
+                    mapping: mapping
+                });
+            }
+        }
+        
+        res.json({ 
+            success: true, 
+            results: results,
+            summary: {
+                total: mappings.length,
+                successful: results.filter(r => r.success).length,
+                failed: results.filter(r => !r.success).length
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error saving customer mappings:', error);
+        res.status(500).json({ error: 'Failed to save customer mappings' });
+    }
+});
+
+// Get existing customer mappings
+app.get('/api/customers/mappings', async (req, res) => {
+    try {
+        const { include_unconfirmed = false } = req.query;
+        
+        let query = `
+            SELECT cm.*, 
+                   sc.email as stripe_email, sc.name as stripe_name,
+                   hc.name as halo_name, hc.email as halo_email
+            FROM customer_mappings cm
+            LEFT JOIN stripe_customers sc ON cm.stripe_customer_id = sc.stripe_id
+            LEFT JOIN halopsa_clients hc ON cm.halopsa_client_id = hc.halopsa_id
+        `;
+        
+        if (!include_unconfirmed) {
+            query += ' WHERE cm.mapping_confirmed = 1';
+        }
+        
+        query += ' ORDER BY cm.updated_at DESC, cm.created_at DESC';
+        
+        const mappings = await db.all(query);
+        
+        res.json({ success: true, mappings: mappings });
+        
+    } catch (error) {
+        console.error('Error fetching customer mappings:', error);
+        res.status(500).json({ error: 'Failed to fetch customer mappings' });
+    }
+});
+
+// Delete customer mapping
+app.delete('/api/customers/mappings/:stripe_customer_id', async (req, res) => {
+    try {
+        const { stripe_customer_id } = req.params;
+        
+        await db.run(
+            'DELETE FROM customer_mappings WHERE stripe_customer_id = ?',
+            [stripe_customer_id]
+        );
+        
+        res.json({ success: true, message: 'Mapping deleted successfully' });
+        
+    } catch (error) {
+        console.error('Error deleting customer mapping:', error);
+        res.status(500).json({ error: 'Failed to delete customer mapping' });
+    }
+});
+
+// ==================== STRIPE TRANSACTION TO HALOPSA INVOICE MAPPING ====================
+
+// Helper function to parse invoice numbers from Stripe transaction descriptions
+function parseInvoiceNumber(description) {
+    if (!description) return null;
+
+    const descStr = String(description).trim();
+    const patterns = [
+        // Pattern 1: "Invoice #12345" or "Invoice # 12345"
+        /invoice\s*#\s*(\d+)/i,
+        // Pattern 2: "INV-12345" or "INV 12345"
+        /inv[-\s]*(\d+)/i,
+        // Pattern 3: "Invoice 12345" or "Invoice: 12345"
+        /invoice[:\s]+(\d+)/i,
+        // Pattern 4: "Invoice Number: 12345" or "Invoice No: 12345"
+        /invoice\s*(?:number|no|num)[:\s]*(\d+)/i,
+        // Pattern 5: Standalone invoice number at start: "#12345"
+        /^#(\d+)/,
+        // Pattern 6: "Bill #12345" or "Bill 12345"
+        /bill\s*#?\s*(\d+)/i,
+        // Pattern 7: HaloPSA specific format (if known)
+        /halo[-\s]*invoice[-\s]*(\d+)/i,
+        // Pattern 8: Just digits after common prefixes
+        /(?:^|\s)(?:inv|invoice|bill)[-\s#:]*(\d{3,})/i,
+        // Pattern 9: Standalone number with 4+ digits (more conservative)
+        /(?:^|\s)(\d{4,})(?:\s|$)/
+    ];
+
+    for (const pattern of patterns) {
+        const match = descStr.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+
+    return null;
+}
+
+// POST /api/mappings/stripe-invoices - Auto-match Stripe transactions to HaloPSA invoices
+app.post('/api/mappings/stripe-invoices', async (req, res) => {
+    try {
+        console.log('Starting Stripe-to-HaloPSA invoice auto-match...');
+
+        // Get all Stripe transactions that haven't been mapped yet
+        const unmappedTransactions = await db.all(`
+            SELECT id, stripe_id, customer_id, amount, currency, description,
+                   status, created, halopsa_invoice_id
+            FROM stripe_transactions
+            WHERE halopsa_invoice_id IS NULL
+            ORDER BY created DESC
+        `);
+
+        console.log(`Found ${unmappedTransactions.length} unmapped Stripe transactions`);
+
+        // Get all HaloPSA invoices for matching
+        const haloInvoices = await db.all(`
+            SELECT id, halopsa_id, invoice_number, halopsa_client_id, client_name,
+                   invoice_date, total_amount, status, stripe_transaction_id
+            FROM halopsa_invoices
+            ORDER BY invoice_date DESC
+        `);
+
+        console.log(`Found ${haloInvoices.length} HaloPSA invoices`);
+
+        // Create lookup map for invoices by invoice_number
+        const invoiceMap = new Map();
+        for (const invoice of haloInvoices) {
+            invoiceMap.set(invoice.invoice_number, invoice);
+        }
+
+        const results = {
+            success: true,
+            total_processed: unmappedTransactions.length,
+            matched: 0,
+            failed: 0,
+            already_mapped: 0,
+            matches: [],
+            failures: []
+        };
+
+        // Process each transaction
+        for (const transaction of unmappedTransactions) {
+            try {
+                // Parse invoice number from description
+                const invoiceNumber = parseInvoiceNumber(transaction.description);
+
+                if (!invoiceNumber) {
+                    results.failures.push({
+                        stripe_id: transaction.stripe_id,
+                        description: transaction.description,
+                        reason: 'No invoice number found in description',
+                        confidence: 0
+                    });
+                    results.failed++;
+                    continue;
+                }
+
+                // Look up invoice in HaloPSA
+                const matchedInvoice = invoiceMap.get(invoiceNumber);
+
+                if (!matchedInvoice) {
+                    results.failures.push({
+                        stripe_id: transaction.stripe_id,
+                        description: transaction.description,
+                        parsed_invoice_number: invoiceNumber,
+                        reason: 'Invoice number not found in HaloPSA',
+                        confidence: 0
+                    });
+                    results.failed++;
+                    continue;
+                }
+
+                // Check if invoice is already mapped to another transaction
+                if (matchedInvoice.stripe_transaction_id &&
+                    matchedInvoice.stripe_transaction_id !== transaction.stripe_id) {
+                    results.failures.push({
+                        stripe_id: transaction.stripe_id,
+                        description: transaction.description,
+                        parsed_invoice_number: invoiceNumber,
+                        reason: `Invoice already mapped to Stripe transaction ${matchedInvoice.stripe_transaction_id}`,
+                        confidence: 0
+                    });
+                    results.already_mapped++;
+                    continue;
+                }
+
+                // Calculate confidence score based on amount matching
+                let confidence = 0.7; // Base confidence for invoice number match
+
+                // Convert Stripe amount (in cents) to dollars for comparison
+                const stripeAmountDollars = transaction.amount / 100;
+                const haloAmount = matchedInvoice.total_amount || 0;
+
+                // Check if amounts match (within small tolerance for rounding)
+                const amountDiff = Math.abs(stripeAmountDollars - haloAmount);
+                if (amountDiff < 0.02) {
+                    confidence = 1.0; // Perfect match
+                } else if (amountDiff < 1.00) {
+                    confidence = 0.9; // Very close match
+                } else if (amountDiff < 10.00) {
+                    confidence = 0.8; // Close match
+                }
+                // Otherwise keep base confidence of 0.7
+
+                // Update the mapping in both tables
+                await db.run(
+                    'UPDATE stripe_transactions SET halopsa_invoice_id = ? WHERE id = ?',
+                    [matchedInvoice.id, transaction.id]
+                );
+
+                await db.run(
+                    'UPDATE halopsa_invoices SET stripe_transaction_id = ? WHERE id = ?',
+                    [transaction.stripe_id, matchedInvoice.id]
+                );
+
+                results.matches.push({
+                    stripe_transaction_id: transaction.stripe_id,
+                    stripe_description: transaction.description,
+                    stripe_amount: stripeAmountDollars,
+                    halopsa_invoice_id: matchedInvoice.halopsa_id,
+                    halopsa_invoice_number: matchedInvoice.invoice_number,
+                    halopsa_client_name: matchedInvoice.client_name,
+                    halopsa_amount: haloAmount,
+                    amount_difference: amountDiff,
+                    confidence: confidence,
+                    match_reason: `Invoice number "${invoiceNumber}" parsed from description`
+                });
+
+                results.matched++;
+
+            } catch (error) {
+                console.error(`Error processing transaction ${transaction.stripe_id}:`, error);
+                results.failures.push({
+                    stripe_id: transaction.stripe_id,
+                    description: transaction.description,
+                    reason: error.message,
+                    confidence: 0
+                });
+                results.failed++;
+            }
+        }
+
+        console.log(`Invoice mapping complete: ${results.matched} matched, ${results.failed} failed, ${results.already_mapped} already mapped`);
+
+        res.json(results);
+
+    } catch (error) {
+        console.error('Error auto-matching invoices:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to auto-match invoices: ' + error.message
+        });
+    }
+});
+
+// GET /api/mappings/stripe-invoices - Retrieve all mapped Stripe transactions with invoice details
+app.get('/api/mappings/stripe-invoices', async (req, res) => {
+    try {
+        console.log('Retrieving Stripe-to-HaloPSA invoice mappings...');
+
+        // Query for all mapped transactions with full invoice details
+        const mappedTransactions = await db.all(`
+            SELECT
+                st.id as stripe_db_id,
+                st.stripe_id,
+                st.customer_id,
+                st.amount as stripe_amount_cents,
+                st.currency,
+                st.description,
+                st.status as stripe_status,
+                st.created as stripe_created,
+                st.halopsa_invoice_id,
+                hi.halopsa_id,
+                hi.invoice_number,
+                hi.halopsa_client_id,
+                hi.client_name,
+                hi.invoice_date,
+                hi.due_date,
+                hi.total_amount as invoice_amount,
+                hi.paid_amount,
+                hi.balance_due,
+                hi.status as invoice_status,
+                hi.payment_status,
+                hi.currency as invoice_currency,
+                sc.name as stripe_customer_name,
+                sc.email as stripe_customer_email
+            FROM stripe_transactions st
+            LEFT JOIN halopsa_invoices hi ON st.halopsa_invoice_id = hi.id
+            LEFT JOIN stripe_customers sc ON st.customer_id = sc.stripe_id
+            WHERE st.halopsa_invoice_id IS NOT NULL
+            ORDER BY st.created DESC
+        `);
+
+        // Transform the data for easier consumption
+        const mappings = mappedTransactions.map(row => ({
+            stripe_transaction: {
+                id: row.stripe_id,
+                db_id: row.stripe_db_id,
+                customer_id: row.customer_id,
+                customer_name: row.stripe_customer_name,
+                customer_email: row.stripe_customer_email,
+                amount: row.stripe_amount_cents / 100, // Convert cents to dollars
+                amount_cents: row.stripe_amount_cents,
+                currency: row.currency,
+                description: row.description,
+                status: row.stripe_status,
+                created: row.stripe_created,
+                created_date: new Date(row.stripe_created * 1000).toISOString()
+            },
+            halopsa_invoice: {
+                id: row.halopsa_id,
+                db_id: row.halopsa_invoice_id,
+                invoice_number: row.invoice_number,
+                client_id: row.halopsa_client_id,
+                client_name: row.client_name,
+                invoice_date: row.invoice_date,
+                due_date: row.due_date,
+                total_amount: row.invoice_amount,
+                paid_amount: row.paid_amount,
+                balance_due: row.balance_due,
+                status: row.invoice_status,
+                payment_status: row.payment_status,
+                currency: row.invoice_currency
+            },
+            amount_match: {
+                difference: Math.abs((row.stripe_amount_cents / 100) - (row.invoice_amount || 0)),
+                is_exact: Math.abs((row.stripe_amount_cents / 100) - (row.invoice_amount || 0)) < 0.02
+            }
+        }));
+
+        console.log(`Retrieved ${mappings.length} invoice mappings`);
+
+        res.json({
+            success: true,
+            total: mappings.length,
+            mappings: mappings
+        });
+
+    } catch (error) {
+        console.error('Error retrieving invoice mappings:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to retrieve invoice mappings: ' + error.message
+        });
+    }
+});
+
+// ==================== END STRIPE-HALOPSA INVOICE MAPPING ====================
+
+// Optimized version for batch processing
+function calculateMatchScoreOptimized(stripeCustomer, haloClient, stripeNameLower, stripeWords) {
     let score = 0;
     
-    // Email match (most reliable)
-    if (stripeCustomer.email && haloClient.email && 
-        stripeCustomer.email.toLowerCase() === haloClient.email.toLowerCase()) {
-        score += 0.8;
+    // Email match
+    if (stripeCustomer.email && haloClient.email) {
+        try {
+            const email1 = stripeCustomer.email.toLowerCase().trim();
+            const email2 = haloClient.email.toLowerCase().trim();
+            if (email1 === email2) {
+                score += 0.8;
+            }
+        } catch (e) {
+            // Email comparison failed, continue with name matching
+        }
     }
     
-    // Name similarity
-    if (stripeCustomer.name && haloClient.name) {
-        const name1 = stripeCustomer.name.toLowerCase();
-        const name2 = haloClient.name.toLowerCase();
-        if (name1.includes(name2) || name2.includes(name1)) {
-            score += 0.6;
+    // Name matching using pre-calculated values
+    if (stripeNameLower && haloClient.nameLower) {
+        try {
+            // Exact match
+            if (stripeNameLower === haloClient.nameLower) {
+                score += 0.8;
+            }
+            // One name is a clear subset of the other
+            else if (isClearSubset(stripeNameLower, haloClient.nameLower)) {
+                score += 0.7;
+            }
+            // Contains match
+            else if (stripeNameLower.includes(haloClient.nameLower) || haloClient.nameLower.includes(stripeNameLower)) {
+                score += 0.6;
+            }
+            // Word overlap using pre-calculated sets
+            else if (stripeWords && haloClient.words) {
+                const intersection = new Set([...stripeWords].filter(x => haloClient.words.has(x)));
+                const union = new Set([...stripeWords, ...haloClient.words]);
+                
+                if (union.size > 0) {
+                    const overlap = intersection.size / union.size;
+                    if (overlap > 0.8) score += 0.6;
+                    else if (overlap > 0.6) score += 0.4;
+                    else if (overlap > 0.4) score += 0.3;
+                }
+            }
+        } catch (e) {
+            // Name matching failed, continue without adding score
+            console.warn('Name matching error:', e.message);
         }
     }
     
     return Math.min(score, 1.0);
 }
+
+// Original function (keep for backward compatibility)
+function calculateMatchScore(stripeCustomer, haloClient) {
+    let score = 0;
+    
+    // Email match (most reliable) - requires both emails to be present
+    if (stripeCustomer.email && haloClient.email) {
+        const email1 = stripeCustomer.email.toLowerCase().trim();
+        const email2 = haloClient.email.toLowerCase().trim();
+        if (email1 === email2) {
+            score += 0.8;
+        }
+    }
+    
+    // Improved name similarity matching with better scoring
+    if (stripeCustomer.name && haloClient.name) {
+        const name1 = stripeCustomer.name.toLowerCase().trim();
+        const name2 = haloClient.name.toLowerCase().trim();
+        
+        // Human name matching - check if both appear to be personal names
+        const isHumanName1 = isLikelyHumanName(name1);
+        const isHumanName2 = isLikelyHumanName(name2);
+        
+        if (isHumanName1 && isHumanName2) {
+            // Special handling for human names
+            const humanScore = calculateHumanNameMatchScore(name1, name2);
+            score += humanScore;
+        } else {
+            // Business/organization name matching
+            // Exact match
+            if (name1 === name2) {
+                score += 0.8;
+            }
+            // One name is a clear subset of the other (e.g., "3 Bridges Pediatric" vs "3 Bridges Pediatric Dentistry")
+            else if (isClearSubset(name1, name2)) {
+                score += 0.7;
+            }
+            // Contains match with high confidence
+            else if (name1.includes(name2) || name2.includes(name1)) {
+                score += 0.6;
+            }
+            // Strong word overlap (most words match)
+            else if (calculateWordOverlap(name1, name2) > 0.8) {
+                score += 0.6;
+            }
+            // Partial match using common business name variations
+            else if (hasStrongCommonWords(name1, name2)) {
+                score += 0.5;
+            }
+            // Moderate word overlap
+            else if (calculateWordOverlap(name1, name2) > 0.6) {
+                score += 0.4;
+            }
+            // Weak word overlap but still meaningful
+            else if (calculateWordOverlap(name1, name2) > 0.4) {
+                score += 0.3;
+            }
+        }
+    }
+    
+    return Math.min(score, 1.0);
+}
+
+// Check if a name appears to be a human name (personal name)
+function isLikelyHumanName(name) {
+    // Names with 2-4 words that don't contain obvious business terms
+    const businessTerms = ['dental', 'dentistry', 'clinic', 'center', 'group', 'associates', 
+                          'pediatric', 'orthodontics', 'care', 'practice', 'family', 'surgery', 
+                          'smile', 'hospital', 'medical', 'doctor', 'dr', 'md', 'dds', 'llc',
+                          'inc', 'corp', 'company', 'enterprises', 'department', 'center'];
+    
+    const words = name.split(/\s+/);
+    
+    // Too many words for a personal name
+    if (words.length > 4) return false;
+    
+    // Contains business-related terms
+    if (businessTerms.some(term => name.includes(term))) return false;
+    
+    // Most personal names have 2-3 words (First Last or First Middle Last)
+    return words.length >= 2 && words.length <= 4;
+}
+
+// Calculate score for human name matching
+function calculateHumanNameMatchScore(name1, name2) {
+    let score = 0;
+    
+    const names1 = extractNameParts(name1);
+    const names2 = extractNameParts(name2);
+    
+    // Exact match
+    if (name1 === name2) {
+        score += 0.8;
+    }
+    // Same name components in different order (e.g., "John Smith" vs "Smith, John")
+    else if (hasSameNameComponents(names1, names2)) {
+        score += 0.7;
+    }
+    // Last name match with first name similarity
+    else if (names1.lastName && names2.lastName && names1.lastName === names2.lastName) {
+        score += 0.6;
+        if (names1.firstName && names2.firstName && 
+            (names1.firstName.includes(names2.firstName) || names2.firstName.includes(names1.firstName))) {
+            score += 0.2;
+        }
+    }
+    // First name match
+    else if (names1.firstName && names2.firstName && names1.firstName === names2.firstName) {
+        score += 0.5;
+    }
+    // Partial name component matching
+    else if (hasPartialNameMatch(names1, names2)) {
+        score += 0.4;
+    }
+    
+    return Math.min(score, 1.0);
+}
+
+// Extract name parts from a string
+function extractNameParts(name) {
+    const parts = {
+        firstName: null,
+        lastName: null,
+        middleName: null,
+        suffix: null
+    };
+    
+    // Remove common honorifics and suffixes
+    const cleanedName = name.replace(/\b(dr\.?|doctor|mr\.?|mrs\.?|ms\.?|prof\.?|professor)\b/gi, '').trim();
+    const words = cleanedName.split(/\s+|,/).filter(word => word.length > 0);
+    
+    // Handle "Last, First" format
+    if (name.includes(',')) {
+        if (words.length >= 2) {
+            parts.lastName = words[0];
+            parts.firstName = words[1];
+            // Check for middle name or suffix in remaining words
+            if (words.length >= 3) {
+                const remaining = words.slice(2).join(' ');
+                if (isLikelySuffix(remaining)) {
+                    parts.suffix = remaining;
+                } else {
+                    parts.middleName = remaining;
+                }
+            }
+        }
+    } else {
+        // Handle "First Last" format
+        if (words.length >= 1) parts.firstName = words[0];
+        if (words.length >= 2) {
+            // Check if last word is a suffix
+            const lastWord = words[words.length - 1];
+            if (isLikelySuffix(lastWord)) {
+                parts.suffix = lastWord;
+                parts.lastName = words.length >= 3 ? words[words.length - 2] : null;
+            } else {
+                parts.lastName = lastWord;
+            }
+        }
+        if (words.length >= 3) {
+            // Middle name is everything between first and last
+            parts.middleName = words.slice(1, words.length - (parts.suffix ? 2 : 1)).join(' ');
+        }
+    }
+    
+    return parts;
+}
+
+// Check if a word is likely a name suffix
+function isLikelySuffix(word) {
+    const suffixes = ['jr', 'sr', 'ii', 'iii', 'iv', 'esq', 'phd', 'md', 'dds'];
+    return suffixes.includes(word.toLowerCase().replace('.', ''));
+}
+
+// Check if two names have the same components regardless of order
+function hasSameNameComponents(names1, names2) {
+    const components1 = [names1.firstName, names1.lastName].filter(Boolean);
+    const components2 = [names2.firstName, names2.lastName].filter(Boolean);
+    
+    if (components1.length === 0 || components2.length === 0) return false;
+    
+    // Check if both names contain the same set of name components
+    const set1 = new Set(components1);
+    const set2 = new Set(components2);
+    
+    if (set1.size !== set2.size) return false;
+    
+    for (const component of set1) {
+        if (!set2.has(component)) return false;
+    }
+    
+    return true;
+}
+
+// Check for partial name matching (one name contains components of the other)
+function hasPartialNameMatch(names1, names2) {
+    const allComponents1 = [names1.firstName, names1.lastName, names1.middleName].filter(Boolean);
+    const allComponents2 = [names2.firstName, names2.lastName, names2.middleName].filter(Boolean);
+    
+    // Check if any component from name1 appears in name2 or vice versa
+    for (const comp1 of allComponents1) {
+        for (const comp2 of allComponents2) {
+            if (comp1.includes(comp2) || comp2.includes(comp1)) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+// Check if one name is a clear subset of the other (e.g., short form vs full form)
+function isClearSubset(name1, name2) {
+    const shorter = name1.length < name2.length ? name1 : name2;
+    const longer = name1.length < name2.length ? name2 : name1;
+    
+    // The shorter name should be at least 70% of the longer name and be contained within it
+    const lengthRatio = shorter.length / longer.length;
+    return lengthRatio > 0.7 && longer.includes(shorter);
+}
+
+// Calculate word overlap between two names
+function calculateWordOverlap(name1, name2) {
+    const words1 = new Set(name1.split(/[\s,.&]+/).filter(word => word.length > 2));
+    const words2 = new Set(name2.split(/[\s,.&]+/).filter(word => word.length > 2));
+    
+    if (words1.size === 0 || words2.size === 0) return 0;
+    
+    const intersection = new Set([...words1].filter(x => words2.has(x)));
+    const union = new Set([...words1, ...words2]);
+    
+    return intersection.size / union.size;
+}
+
+// More sophisticated common word matching
+function hasStrongCommonWords(name1, name2) {
+    const businessWords = ['dental', 'dentistry', 'clinic', 'center', 'group', 'associates', 'pediatric', 'orthodontics', 'care', 'practice', 'family', 'surgery', 'smile'];
+    
+    const words1 = name1.split(/[\s,.&]+/).filter(word => word.length > 2);
+    const words2 = name2.split(/[\s,.&]+/).filter(word => word.length > 2);
+    
+    // Count matching unique words (excluding very common business words)
+    const uniqueWords1 = words1.filter(word => !businessWords.includes(word));
+    const uniqueWords2 = words2.filter(word => !businessWords.includes(word));
+    
+    // Check for strong matching (at least 2 unique words match)
+    let matchCount = 0;
+    for (const word1 of uniqueWords1) {
+        for (const word2 of uniqueWords2) {
+            if (word1.includes(word2) || word2.includes(word1)) {
+                matchCount++;
+                if (matchCount >= 2) return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+// Get comprehensive customer view with HaloPSA as source of truth
+app.get('/api/customers/view/:halopsa_client_id', async (req, res) => {
+    try {
+        const { halopsa_client_id } = req.params;
+        
+        if (!halopsa_client_id) {
+            return res.status(400).json({ error: 'halopsa_client_id is required' });
+        }
+        
+        // Get HaloPSA client details
+        const haloClient = await db.get(`
+            SELECT id, halopsa_id, name, email, phone, address, 
+                   created_at, last_sync, raw_data
+            FROM halopsa_clients 
+            WHERE halopsa_id = ?
+        `, [halopsa_client_id]);
+        
+        if (!haloClient) {
+            return res.status(404).json({ error: 'HaloPSA client not found' });
+        }
+        
+        // Get mapped Stripe customer
+        const stripeMapping = await db.get(`
+            SELECT cm.*, sc.email as stripe_email, sc.name as stripe_name
+            FROM customer_mappings cm
+            LEFT JOIN stripe_customers sc ON cm.stripe_customer_id = sc.stripe_id
+            WHERE cm.halopsa_client_id = ? AND cm.mapping_confirmed = 1
+        `, [halopsa_client_id]);
+        
+        // Get related Stripe transactions/invoices
+        const stripeTransactions = await db.all(`
+            SELECT * FROM stripe_invoices 
+            WHERE customer_id = ? 
+            ORDER BY created DESC 
+            LIMIT 50
+        `, [stripeMapping?.stripe_customer_id || '']);
+        
+        // Get related HaloPSA transactions (simulated - you'd extend this with actual HaloPSA data)
+        const haloTransactions = await db.all(`
+            SELECT * FROM halopsa_transactions 
+            WHERE client_id = ? 
+            ORDER BY date DESC 
+            LIMIT 50
+        `, [halopsa_client_id]);
+        
+        // Get purchase orders (simulated)
+        const purchaseOrders = await db.all(`
+            SELECT * FROM purchase_orders 
+            WHERE client_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 20
+        `, [halopsa_client_id]);
+        
+        // Get items/services (simulated)
+        const clientItems = await db.all(`
+            SELECT * FROM client_items 
+            WHERE client_id = ? 
+            ORDER BY last_used DESC 
+            LIMIT 30
+        `, [halopsa_client_id]);
+        
+        const customerView = {
+            halo_client: haloClient,
+            stripe_mapping: stripeMapping || null,
+            summary: {
+                total_invoices: stripeTransactions.length,
+                total_transactions: haloTransactions.length,
+                total_purchase_orders: purchaseOrders.length,
+                total_items: clientItems.length
+            },
+            transactions: {
+                stripe: stripeTransactions,
+                halopsa: haloTransactions
+            },
+            purchase_orders: purchaseOrders,
+            items: clientItems
+        };
+        
+        res.json({ success: true, customer: customerView });
+        
+    } catch (error) {
+        console.error('Error fetching customer view:', error);
+        res.status(500).json({ error: 'Failed to fetch customer data' });
+    }
+});
+
+// Get all customers with summary data for the customer list view
+app.get('/api/customers/overview', async (req, res) => {
+    try {
+        const { page = 1, pageSize = 50, search = '' } = req.query;
+        const offset = (parseInt(page) - 1) * parseInt(pageSize);
+        
+        // Base query for HaloPSA clients
+        let baseQuery = `
+            SELECT hc.*, 
+                   cm.stripe_customer_id,
+                   cm.stripe_customer_email,
+                   cm.stripe_customer_name,
+                   cm.mapping_confirmed,
+                   cm.created_at as mapping_created
+            FROM halopsa_clients hc
+            LEFT JOIN customer_mappings cm ON hc.halopsa_id = cm.halopsa_client_id AND cm.mapping_confirmed = 1
+        `;
+        
+        let whereClause = '';
+        let params = [];
+        
+        if (search) {
+            whereClause = ` WHERE hc.name LIKE ? OR hc.email LIKE ?`;
+            params = [`%${search}%`, `%${search}%`];
+        }
+        
+        const customers = await db.all(
+            `${baseQuery}${whereClause} ORDER BY hc.name LIMIT ? OFFSET ?`,
+            [...params, parseInt(pageSize), offset]
+        );
+        
+        // Get total count for pagination
+        const totalCount = await db.get(
+            `SELECT COUNT(*) as total FROM halopsa_clients hc${whereClause}`,
+            params
+        );
+        
+        // Add summary data for each customer
+        for (const customer of customers) {
+            if (customer.stripe_customer_id) {
+                const invoiceCount = await db.get(
+                    'SELECT COUNT(*) as count FROM stripe_invoices WHERE customer_id = ?',
+                    [customer.stripe_customer_id]
+                );
+                customer.stripe_invoice_count = invoiceCount.count;
+                
+                const lastInvoice = await db.get(
+                    'SELECT created, amount FROM stripe_invoices WHERE customer_id = ? ORDER BY created DESC LIMIT 1',
+                    [customer.stripe_customer_id]
+                );
+                customer.last_stripe_invoice = lastInvoice;
+            }
+            
+            // Add HaloPSA transaction count (simulated)
+            const transactionCount = await db.get(
+                'SELECT COUNT(*) as count FROM halopsa_transactions WHERE client_id = ?',
+                [customer.halopsa_id]
+            );
+            customer.halopsa_transaction_count = transactionCount.count;
+        }
+        
+        res.json({
+            success: true,
+            customers: customers,
+            pagination: {
+                page: parseInt(page),
+                pageSize: parseInt(pageSize),
+                total: totalCount.total,
+                totalPages: Math.ceil(totalCount.total / parseInt(pageSize))
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching customer overview:', error);
+        res.status(500).json({ error: 'Failed to fetch customer overview' });
+    }
+});
+
+// Customer detail tab endpoints
+app.get('/api/customers/overview/:client_id', async (req, res) => {
+    try {
+        const { client_id } = req.params;
+        
+        // Sample data for overview tab
+        const overviewData = {
+            recent_activity: [
+                { date: new Date(), type: 'invoice', description: 'Invoice #INV-001 created' },
+                { date: new Date(Date.now() - 86400000), type: 'payment', description: 'Payment received for Invoice #INV-001' },
+                { date: new Date(Date.now() - 172800000), type: 'order', description: 'Purchase order #PO-123 submitted' }
+            ],
+            financial_summary: {
+                total_invoiced: 1500.00,
+                total_paid: 1200.00,
+                outstanding: 300.00,
+                average_invoice: 500.00
+            },
+            service_history: [
+                { date: new Date(), type: 'support', description: 'Technical support ticket resolved' },
+                { date: new Date(Date.now() - 259200000), type: 'maintenance', description: 'Scheduled maintenance completed' }
+            ]
+        };
+        
+        res.json(overviewData);
+    } catch (error) {
+        console.error('Error fetching customer overview:', error);
+        res.status(500).json({ error: 'Failed to fetch customer overview data' });
+    }
+});
+
+app.get('/api/halopsa/clients/:client_id/transactions', async (req, res) => {
+    try {
+        const { client_id } = req.params;
+        
+        // Get HaloPSA transactions for client
+        const transactions = await db.all(`
+            SELECT * FROM halopsa_transactions 
+            WHERE client_id = ? 
+            ORDER BY date DESC 
+            LIMIT 50
+        `, [client_id]);
+        
+        res.json({ transactions: transactions });
+    } catch (error) {
+        console.error('Error fetching HaloPSA transactions:', error);
+        res.status(500).json({ error: 'Failed to fetch HaloPSA transactions' });
+    }
+});
+
+app.get('/api/halopsa/clients/:client_id/purchase-orders', async (req, res) => {
+    try {
+        const { client_id } = req.params;
+        
+        // Get purchase orders for client
+        const purchaseOrders = await db.all(`
+            SELECT * FROM purchase_orders 
+            WHERE client_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 20
+        `, [client_id]);
+        
+        res.json({ purchase_orders: purchaseOrders });
+    } catch (error) {
+        console.error('Error fetching purchase orders:', error);
+        res.status(500).json({ error: 'Failed to fetch purchase orders' });
+    }
+});
+
+app.get('/api/halopsa/clients/:client_id/service-items', async (req, res) => {
+    try {
+        const { client_id } = req.params;
+        
+        // Get service items for client
+        const serviceItems = await db.all(`
+            SELECT * FROM client_items 
+            WHERE client_id = ? 
+            ORDER BY last_used DESC 
+            LIMIT 30
+        `, [client_id]);
+        
+        res.json({ service_items: serviceItems });
+    } catch (error) {
+        console.error('Error fetching service items:', error);
+        res.status(500).json({ error: 'Failed to fetch service items' });
+    }
+});
 
 // System status endpoint
 app.get('/api/status', async (req, res) => {
@@ -1494,6 +3968,8 @@ app.get('/api/status', async (req, res) => {
         // Check Stripe
         try {
             const stripeAPI = new StripeAPI(db);
+            // Force re-initialization with latest config
+            await stripeAPI.initialize();
             const stripeTest = await stripeAPI.testConnection();
             status.stripe = { 
                 status: stripeTest.success ? 'healthy' : 'error', 
@@ -1505,13 +3981,15 @@ app.get('/api/status', async (req, res) => {
         
         // Check HaloPSA
         try {
-            const halopsaAPI = new HaloPSAAPI(db);
+            const halopsaAPI = await getHaloPSAAPI();
             const halopsaTest = await halopsaAPI.testConnection();
+            console.log('HaloPSA status check result:', halopsaTest);
             status.halopsa = { 
                 status: halopsaTest.success ? 'healthy' : 'error', 
                 message: halopsaTest.message 
             };
         } catch (error) {
+            console.error('HaloPSA status check error:', error);
             status.halopsa = { status: 'error', message: error.message };
         }
         
@@ -1699,4 +4177,136 @@ app.listen(port, () => {
     console.log(`   3. Open QuickBooks Web Connector`);
     console.log(`   4. Add the QWC file and use the test credentials`);
     console.log(`   5. Click "Update" to sync data`);
+});
+
+// Mapping API Endpoints
+app.get('/api/halopsa/invoice/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const invoice = await db.get('SELECT * FROM halopsa_invoices WHERE id = ?', [id]);
+        
+        if (!invoice) {
+            return res.status(404).json({ success: false, message: 'Invoice not found' });
+        }
+        
+        res.json(invoice);
+    } catch (error) {
+        console.error('Error fetching invoice details:', error);
+        res.status(500).json({ success: false, message: 'Error fetching invoice details' });
+    }
+});
+
+app.get('/api/stripe/transactions', async (req, res) => {
+    try {
+        const { invoiceAmount, clientName } = req.query;
+        
+        let query = 'SELECT * FROM stripe_transactions WHERE 1=1';
+        let params = [];
+        
+        // Add amount filter if provided (within 10% tolerance)
+        if (invoiceAmount) {
+            const amount = parseFloat(invoiceAmount);
+            const minAmount = amount * 0.9; // 10% below
+            const maxAmount = amount * 1.1; // 10% above
+            query += ' AND (amount >= ? AND amount <= ?)';
+            params.push(minAmount * 100, maxAmount * 100); // Convert to cents
+        }
+        
+        // Add limit and order by date (most recent first)
+        query += ' ORDER BY created DESC LIMIT 50';
+        
+        const transactions = await db.query(query, params);
+        
+        // Enhance transactions with customer names if available
+        const enhancedTransactions = await Promise.all(
+            transactions.map(async (transaction) => {
+                // Try to get customer name from mappings
+                const customerMapping = await db.get(
+                    'SELECT customer_name FROM customer_mappings WHERE stripe_customer_id = ?',
+                    [transaction.customer_id]
+                );
+                
+                return {
+                    ...transaction,
+                    customer_name: customerMapping?.customer_name || null
+                };
+            })
+        );
+        
+        res.json(enhancedTransactions);
+    } catch (error) {
+        console.error('Error fetching Stripe transactions:', error);
+        res.status(500).json({ success: false, message: 'Error fetching Stripe transactions' });
+    }
+});
+
+app.post('/api/map-invoice-to-stripe', async (req, res) => {
+    try {
+        const { invoiceId, stripeTransactionId } = req.body;
+        
+        if (!invoiceId || !stripeTransactionId) {
+            return res.status(400).json({ success: false, message: 'Invoice ID and Stripe Transaction ID are required' });
+        }
+        
+        // Verify invoice exists
+        const invoice = await db.get('SELECT id FROM halopsa_invoices WHERE id = ?', [invoiceId]);
+        if (!invoice) {
+            return res.status(404).json({ success: false, message: 'Invoice not found' });
+        }
+        
+        // Verify stripe transaction exists
+        const stripeTx = await db.get('SELECT stripe_id FROM stripe_transactions WHERE stripe_id = ?', [stripeTransactionId]);
+        if (!stripeTx) {
+            return res.status(404).json({ success: false, message: 'Stripe transaction not found' });
+        }
+        
+        // Update invoice with stripe transaction ID
+        await db.run(
+            'UPDATE halopsa_invoices SET stripe_transaction_id = ?, mapping_date = CURRENT_TIMESTAMP WHERE id = ?',
+            [stripeTransactionId, invoiceId]
+        );
+        
+        res.json({ 
+            success: true, 
+            message: 'Invoice successfully mapped to Stripe transaction',
+            invoiceId,
+            stripeTransactionId
+        });
+        
+    } catch (error) {
+        console.error('Error mapping invoice to Stripe:', error);
+        res.status(500).json({ success: false, message: 'Error mapping invoice to Stripe' });
+    }
+});
+
+app.post('/api/unmap-invoice', async (req, res) => {
+    try {
+        const { invoiceId } = req.body;
+        
+        if (!invoiceId) {
+            return res.status(400).json({ success: false, message: 'Invoice ID is required' });
+        }
+        
+        // Verify invoice exists
+        const invoice = await db.get('SELECT id FROM halopsa_invoices WHERE id = ?', [invoiceId]);
+        if (!invoice) {
+            return res.status(404).json({ success: false, message: 'Invoice not found' });
+        }
+        
+        // Clear stripe transaction ID
+        await db.run(
+            'UPDATE halopsa_invoices SET stripe_transaction_id = NULL, mapping_date = NULL WHERE id = ?',
+            [invoiceId]
+        );
+        
+        res.json({ 
+            success: true, 
+            message: 'Invoice successfully unmapped',
+            invoiceId
+        });
+        
+    } catch (error) {
+        console.error('Error unmapping invoice:', error);
+        res.status(500).json({ success: false, message: 'Error unmapping invoice' });
+    }
 });

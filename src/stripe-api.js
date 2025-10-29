@@ -1,18 +1,22 @@
-const Stripe = require('stripe');
+const https = require('https');
 
 class StripeAPI {
     constructor(db) {
         this.db = db;
-        this.stripe = null;
+        this.apiKey = null;
+        this.baseUrl = 'https://api.stripe.com/v1';
         this.initialize();
     }
 
     async initialize() {
         try {
             const config = await this.getConfig();
-            if (config.stripe_secret_key) {
-                this.stripe = new Stripe(config.stripe_secret_key);
-                console.log('Stripe API initialized successfully');
+            this.apiKey = config.stripe_secret_key ? config.stripe_secret_key.trim() : null;
+            
+            if (this.apiKey) {
+                console.log('Stripe API initialized (HTTP client mode)');
+            } else {
+                console.log('Stripe API not configured - no secret key set');
             }
         } catch (error) {
             console.error('Error initializing Stripe API:', error);
@@ -30,177 +34,408 @@ class StripeAPI {
 
     async testConnection() {
         try {
-            if (!this.stripe) {
-                return { success: false, message: 'Stripe not configured - check secret key' };
+            // Re-initialize with latest configuration
+            await this.initialize();
+            
+            if (!this.apiKey) {
+                return { success: false, message: 'Stripe not configured - please save a valid secret key first' };
             }
 
-            const balance = await this.stripe.balance.retrieve();
+            console.log('Testing Stripe connection with key:', this.apiKey.substring(0, 20) + '...');
+            
+            // Test connection by making a simple API call
+            const result = await this.makeRequest('/balance');
+            
+            if (result.error) {
+                return { success: false, message: `Stripe connection failed: ${result.error.message}` };
+            }
+            
+            const balance = result.available[0];
             return { 
                 success: true, 
-                message: `Stripe connection successful. Balance: ${balance.available[0].amount / 100} ${balance.available[0].currency}`
+                message: `Stripe connection successful. Available balance: ${(balance.amount / 100).toFixed(2)} ${balance.currency}`
             };
         } catch (error) {
+            console.error('Stripe connection test error:', error);
             return { success: false, message: `Stripe connection failed: ${error.message}` };
         }
     }
 
-    async syncTransactions() {
-        try {
-            if (!this.stripe) {
-                return { success: false, message: 'Stripe not configured' };
-            }
+    async makeRequest(path) {
+        return new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'api.stripe.com',
+                port: 443,
+                path: `/v1${path}`,
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${this.apiKey}`,
+                    'Content-Type': 'application/json'
+                }
+            };
 
-            let syncedCount = 0;
-            const latestTransaction = await this.db.get(
-                'SELECT MAX(created) as latest FROM stripe_transactions'
-            );
-            
-            const startingAfter = latestTransaction ? latestTransaction.latest : undefined;
-            const charges = await this.stripe.charges.list({
-                limit: 100,
-                starting_after: startingAfter
+            const req = https.request(options, (res) => {
+                let data = '';
+
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+
+                res.on('end', () => {
+                    try {
+                        const jsonData = JSON.parse(data);
+                        if (res.statusCode >= 200 && res.statusCode < 300) {
+                            resolve(jsonData);
+                        } else {
+                            reject(new Error(jsonData.error ? jsonData.error.message : `HTTP ${res.statusCode}`));
+                        }
+                    } catch (error) {
+                        reject(new Error('Failed to parse response'));
+                    }
+                });
             });
 
-            for (const charge of charges.data) {
-                // Check if transaction already exists
-                const existing = await this.db.get(
-                    'SELECT id FROM stripe_transactions WHERE stripe_id = ?',
-                    [charge.id]
-                );
+            req.on('error', (error) => {
+                reject(error);
+            });
 
-                if (!existing) {
-                    await this.db.run(
-                        `INSERT INTO stripe_transactions (
-                            stripe_id, customer_id, amount, currency, description, 
-                            status, created, invoice_id, payment_intent_id, refunded, raw_data
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [
-                            charge.id,
-                            charge.customer,
-                            charge.amount,
-                            charge.currency,
-                            charge.description,
-                            charge.status,
-                            charge.created,
-                            charge.invoice,
-                            charge.payment_intent,
-                            charge.refunded,
-                            JSON.stringify(charge)
-                        ]
+            req.setTimeout(10000, () => {
+                req.destroy();
+                reject(new Error('Request timeout'));
+            });
+
+            req.end();
+        });
+    }
+
+    async importCustomers(progressCallback = null) {
+        try {
+            // Re-initialize with latest configuration
+            await this.initialize();
+            
+            if (!this.apiKey) {
+                return { success: false, message: 'Stripe not configured - please save a valid secret key first' };
+            }
+
+            console.log('Starting Stripe customer import with key:', this.apiKey.substring(0, 20) + '...');
+            
+            let importedCount = 0;
+            let updatedCount = 0;
+            let hasMore = true;
+            let startingAfter = '';
+            let totalProcessed = 0;
+            let totalCustomers = 0;
+            
+            // First, get total count for progress tracking
+            if (progressCallback) {
+                progressCallback({ stage: 'counting', progress: 0, message: 'Counting customers...' });
+            }
+            
+            // Handle pagination to get ALL customers
+            while (hasMore) {
+                const url = startingAfter ? `/customers?limit=100&starting_after=${startingAfter}` : '/customers?limit=100';
+                const customers = await this.makeRequest(url);
+                
+                if (progressCallback && !startingAfter) {
+                    totalCustomers = customers.data.length; // Estimate total
+                }
+                
+                totalProcessed += customers.data.length;
+                
+                for (let i = 0; i < customers.data.length; i++) {
+                    const customer = customers.data[i];
+                    
+                    if (progressCallback) {
+                        const progress = Math.min(Math.round((totalProcessed / Math.max(totalCustomers, 1)) * 100), 100);
+                        progressCallback({ 
+                            stage: 'importing', 
+                            progress: progress, 
+                            message: `Processing customer ${i + 1} of ${customers.data.length}...`,
+                            current: i + 1,
+                            total: customers.data.length
+                        });
+                    }
+                    
+                    const existing = await this.db.get(
+                        'SELECT id FROM stripe_customers WHERE stripe_id = ?',
+                        [customer.id]
                     );
-                    syncedCount++;
+
+                    if (existing) {
+                        // Update existing customer
+                        await this.db.run(
+                            `UPDATE stripe_customers SET 
+                             email = ?, name = ?, description = ?, phone = ?,
+                             address_line1 = ?, address_city = ?, address_state = ?, 
+                             address_postal_code = ?, address_country = ?, metadata = ?,
+                             raw_data = ?, last_sync = CURRENT_TIMESTAMP
+                             WHERE stripe_id = ?`,
+                            [
+                                customer.email,
+                                customer.name,
+                                customer.description,
+                                customer.phone,
+                                customer.address?.line1,
+                                customer.address?.city,
+                                customer.address?.state,
+                                customer.address?.postal_code,
+                                customer.address?.country,
+                                JSON.stringify(customer.metadata || {}),
+                                JSON.stringify(customer),
+                                customer.id
+                            ]
+                        );
+                        updatedCount++;
+                    } else {
+                        // Insert new customer
+                        await this.db.run(
+                            `INSERT INTO stripe_customers (
+                                stripe_id, email, name, description, phone,
+                                address_line1, address_city, address_state, 
+                                address_postal_code, address_country, created,
+                                metadata, raw_data
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            [
+                                customer.id,
+                                customer.email,
+                                customer.name,
+                                customer.description,
+                                customer.phone,
+                                customer.address?.line1,
+                                customer.address?.city,
+                                customer.address?.state,
+                                customer.address?.postal_code,
+                                customer.address?.country,
+                                customer.created,
+                                JSON.stringify(customer.metadata || {}),
+                                JSON.stringify(customer)
+                            ]
+                        );
+                        importedCount++;
+                    }
+                }
+
+                // Check if there are more pages
+                hasMore = customers.has_more;
+                if (hasMore && customers.data.length > 0) {
+                    startingAfter = customers.data[customers.data.length - 1].id;
+                } else {
+                    hasMore = false;
+                }
+            }
+
+            const total = importedCount + updatedCount;
+            return { 
+                success: true, 
+                message: `Imported ${importedCount} new customers, updated ${updatedCount} existing customers (total: ${total})`,
+                imported: importedCount,
+                updated: updatedCount,
+                total: total
+            };
+        } catch (error) {
+            console.error('Error importing Stripe customers:', error);
+            return { success: false, message: `Error importing customers: ${error.message}` };
+        }
+    }
+
+    async importTransactions(progressCallback = null, importAll = false) {
+        try {
+            // Re-initialize with latest configuration
+            await this.initialize();
+            
+            if (!this.apiKey) {
+                return { success: false, message: 'Stripe not configured - please save a valid secret key first' };
+            }
+
+            console.log('Starting Stripe transaction import with key:', this.apiKey.substring(0, 20) + '...', importAll ? '(Importing ALL transactions)' : '(Importing new transactions only)');
+            
+            let importedCount = 0;
+            let hasMore = true;
+            let startingAfter = '';
+            let latestDate = 0;
+            let totalProcessed = 0;
+            let totalTransactions = 0;
+            
+            if (progressCallback) {
+                progressCallback({ stage: 'counting', progress: 0, message: 'Counting transactions...' });
+            }
+            
+            // If importAll is false, only get transactions newer than the latest in database
+            // If importAll is true, get ALL transactions from Stripe
+            let baseParams = '';
+            if (!importAll) {
+                const latestTransaction = await this.db.get(
+                    'SELECT MAX(created) as latest_created FROM stripe_transactions'
+                );
+                if (latestTransaction?.latest_created) {
+                    baseParams = `created[gte]=${latestTransaction.latest_created + 1}&`;
+                }
+            }
+            
+            // Handle pagination to get ALL transactions
+            while (hasMore) {
+                const url = startingAfter 
+                    ? `/charges?${baseParams}limit=100&starting_after=${startingAfter}`
+                    : `/charges?${baseParams}limit=100`;
+                
+                const charges = await this.makeRequest(url);
+                
+                if (progressCallback && !startingAfter) {
+                    // Try to get total count for better progress tracking
+                    totalTransactions = charges.data.length;
+                    if (charges.has_more) {
+                        totalTransactions = Math.min(totalTransactions * 10, 10000); // Estimate up to 10K transactions
+                    }
+                }
+                
+                totalProcessed += charges.data.length;
+                
+                for (let i = 0; i < charges.data.length; i++) {
+                    const charge = charges.data[i];
+                    
+                    if (progressCallback) {
+                        const progress = Math.min(Math.round((totalProcessed / Math.max(totalTransactions, 1)) * 100), 100);
+                        progressCallback({ 
+                            stage: 'importing', 
+                            progress: progress, 
+                            message: `Processing transaction ${i + 1} of ${charges.data.length}...`,
+                            current: i + 1,
+                            total: charges.data.length
+                        });
+                    }
+                    
+                    const existing = await this.db.get(
+                        'SELECT id FROM stripe_transactions WHERE stripe_id = ?',
+                        [charge.id]
+                    );
+
+                    if (!existing) {
+                        try {
+                            // Store only the essential fields + raw JSON to avoid binding issues
+                            const safeData = {
+                                stripe_id: charge.id || '',
+                                customer_id: charge.customer || '',
+                                amount: Number(charge.amount) || 0,
+                                currency: charge.currency || 'usd',
+                                description: charge.description || '',
+                                status: charge.status || 'unknown',
+                                created: Number(charge.created) || 0,
+                                invoice_id: charge.invoice || null,
+                                payment_intent_id: charge.payment_intent || null,
+                                refunded: Boolean(charge.refunded),
+                                raw_data: JSON.stringify(charge)
+                            };
+                            
+                            await this.db.run(
+                                `INSERT INTO stripe_transactions (
+                                    stripe_id, customer_id, amount, currency, description, 
+                                    status, created, invoice_id, payment_intent_id, 
+                                    refunded, raw_data
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                [
+                                    safeData.stripe_id,
+                                    safeData.customer_id,
+                                    safeData.amount,
+                                    safeData.currency,
+                                    safeData.description,
+                                    safeData.status,
+                                    safeData.created,
+                                    safeData.invoice_id,
+                                    safeData.payment_intent_id,
+                                    safeData.refunded ? 1 : 0, // Convert boolean to integer for SQLite
+                                    safeData.raw_data
+                                ]
+                            );
+                            importedCount++;
+                            latestDate = Math.max(latestDate, charge.created);
+                        } catch (insertError) {
+                            console.error('Error inserting transaction', charge.id, ':', insertError.message);
+                            throw insertError;
+                        }
+                    }
+                }
+
+                // Check if there are more pages
+                hasMore = charges.has_more;
+                if (hasMore && charges.data.length > 0) {
+                    startingAfter = charges.data[charges.data.length - 1].id;
+                } else {
+                    hasMore = false;
                 }
             }
 
             return { 
                 success: true, 
-                message: `Synced ${syncedCount} new transactions`,
-                count: syncedCount 
+                message: `Imported ${importedCount} new transactions`,
+                count: importedCount,
+                latest_date: importedCount > 0 ? latestDate : null
             };
         } catch (error) {
-            console.error('Error syncing Stripe transactions:', error);
-            return { success: false, message: `Error syncing transactions: ${error.message}` };
+            console.error('Error importing Stripe transactions:', error);
+            return { success: false, message: `Error importing transactions: ${error.message}` };
+        }
+    }
+
+    async getImportedCustomers() {
+        try {
+            const customers = await this.db.all(
+                'SELECT * FROM stripe_customers ORDER BY name, email'
+            );
+            return customers;
+        } catch (error) {
+            console.error('Error fetching imported customers:', error);
+            return [];
+        }
+    }
+
+    async getImportedTransactions(limit = null, offset = 0) {
+        try {
+            let query = `SELECT t.*, c.name as customer_name, c.email as customer_email
+                 FROM stripe_transactions t
+                 LEFT JOIN stripe_customers c ON t.customer_id = c.stripe_id
+                 ORDER BY t.created DESC`;
+
+            const params = [];
+            if (limit !== null) {
+                query += ' LIMIT ? OFFSET ?';
+                params.push(limit, offset);
+            }
+
+            const transactions = await this.db.all(query, params);
+            return transactions;
+        } catch (error) {
+            console.error('Error fetching imported transactions:', error);
+            return [];
+        }
+    }
+
+    async getTransactionsCount() {
+        try {
+            const result = await this.db.get('SELECT COUNT(*) as count FROM stripe_transactions');
+            return result ? result.count : 0;
+        } catch (error) {
+            console.error('Error getting transactions count:', error);
+            return 0;
         }
     }
 
     async getCustomers() {
         try {
-            if (!this.stripe) {
+            if (!this.apiKey) {
                 return [];
             }
 
-            const customers = await this.stripe.customers.list({ limit: 100 });
+            const customers = await this.makeRequest('/customers?limit=100');
             return customers.data.map(customer => ({
                 id: customer.id,
                 email: customer.email,
                 name: customer.name,
                 description: customer.description,
-                created: customer.created,
-                metadata: customer.metadata
+                created: customer.created
             }));
         } catch (error) {
             console.error('Error fetching Stripe customers:', error);
             return [];
-        }
-    }
-
-    async getTransactionDetails(transactionId) {
-        try {
-            if (!this.stripe) {
-                return null;
-            }
-
-            const charge = await this.stripe.charges.retrieve(transactionId);
-            return charge;
-        } catch (error) {
-            console.error('Error fetching transaction details:', error);
-            return null;
-        }
-    }
-
-    async mapTransactionToCustomer(transactionId, haloClientId) {
-        try {
-            const transaction = await this.db.get(
-                'SELECT * FROM stripe_transactions WHERE stripe_id = ?',
-                [transactionId]
-            );
-
-            if (!transaction) {
-                return { success: false, message: 'Transaction not found' };
-            }
-
-            // Update transaction mapping
-            await this.db.run(
-                'UPDATE stripe_transactions SET mapped_to_halo = ? WHERE stripe_id = ?',
-                [true, transactionId]
-            );
-
-            // Update customer mapping if customer exists
-            if (transaction.customer_id) {
-                await this.db.run(
-                    `INSERT OR REPLACE INTO customer_mappings 
-                    (stripe_customer_id, halopsa_client_id, mapping_confirmed, updated_at) 
-                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
-                    [transaction.customer_id, haloClientId, true]
-                );
-            }
-
-            return { success: true, message: 'Transaction mapped successfully' };
-        } catch (error) {
-            console.error('Error mapping transaction:', error);
-            return { success: false, message: 'Error mapping transaction' };
-        }
-    }
-
-    async getDashboardStats() {
-        try {
-            const totalTransactions = await this.db.get(
-                'SELECT COUNT(*) as count FROM stripe_transactions'
-            );
-            
-            const mappedTransactions = await this.db.get(
-                'SELECT COUNT(*) as count FROM stripe_transactions WHERE mapped_to_halo = 1'
-            );
-            
-            const totalCustomers = await this.db.get(
-                'SELECT COUNT(DISTINCT customer_id) as count FROM stripe_transactions WHERE customer_id IS NOT NULL'
-            );
-            
-            const mappedCustomers = await this.db.get(
-                'SELECT COUNT(*) as count FROM customer_mappings WHERE mapping_confirmed = 1'
-            );
-
-            return {
-                totalTransactions: totalTransactions.count,
-                mappedTransactions: mappedTransactions.count,
-                totalCustomers: totalCustomers.count,
-                mappedCustomers: mappedCustomers.count,
-                syncRate: totalTransactions.count > 0 ? 
-                    (mappedTransactions.count / totalTransactions.count * 100).toFixed(1) : 0
-            };
-        } catch (error) {
-            console.error('Error fetching dashboard stats:', error);
-            return {};
         }
     }
 }

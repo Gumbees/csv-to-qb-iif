@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Data Sync Manager</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            color: #2c3e50;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 1.75rem; font-weight: 600; }
+        .header p { opacity: 0.9; margin-top: 0.25rem; font-size: 0.95rem; }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+
+        .workflow {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .workflow-step {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            text-align: center;
+            border: 2px solid transparent;
+        }
+        .workflow-step .number {
+            width: 40px;
+            height: 40px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        .workflow-step h3 { font-size: 1rem; margin-bottom: 0.5rem; }
+        .workflow-step p { font-size: 0.85rem; color: #7f8c8d; }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 2rem;
+        }
+
+        .sidebar {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            height: fit-content;
+            position: sticky;
+            top: 2rem;
+        }
+        .sidebar h2 {
+            font-size: 1.25rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 2px solid #ecf0f1;
+        }
+        .nav-item {
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .nav-item:hover { background: #f8f9fa; }
+        .nav-item.active {
+            background: #667eea;
+            color: white;
+            font-weight: 500;
+        }
+        .nav-item .badge {
+            margin-left: auto;
+            background: #e74c3c;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .nav-item.active .badge { background: rgba(255,255,255,0.3); }
+
+        .content {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            min-height: 600px;
+        }
+        .content-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #ecf0f1;
+        }
+        .content-header h2 { font-size: 1.5rem; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .stat-card.green { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+        .stat-card.orange { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .stat-card.blue { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+        .stat-value { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .stat-label { font-size: 0.9rem; opacity: 0.9; }
+        .stat-sublabel { font-size: 0.8rem; opacity: 0.7; margin-top: 0.25rem; }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5568d3; }
+        .btn-success { background: #38ef7d; color: white; }
+        .btn-success:hover { background: #2ed36e; }
+        .btn-secondary { background: #95a5a6; color: white; }
+        .btn-secondary:hover { background: #7f8c8d; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .table-container { overflow-x: auto; margin-top: 1.5rem; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 1rem; text-align: left; border-bottom: 1px solid #ecf0f1; }
+        th { background: #f8f9fa; font-weight: 600; color: #2c3e50; }
+        tr:hover { background: #f8f9fa; }
+
+        .status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .status.mapped { background: #d4edda; color: #155724; }
+        .status.unmapped { background: #fff3cd; color: #856404; }
+        .status.synced { background: #cce5ff; color: #004085; }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .search-box {
+            flex: 1;
+            min-width: 300px;
+            padding: 0.75rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+        select {
+            padding: 0.75rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            background: white;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 2rem auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: none;
+            align-items: center;
+            gap: 1rem;
+            z-index: 1000;
+        }
+        .toast.show { display: flex; }
+        .toast.success { border-left: 4px solid #38ef7d; }
+        .toast.error { border-left: 4px solid #e74c3c; }
+        .toast.info { border-left: 4px solid #3498db; }
+
+        .view-hidden { display: none !important; }
+
+        .load-more-container {
+            text-align: center;
+            padding: 2rem;
+            border-top: 1px solid #ecf0f1;
+        }
+        .load-more-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        .no-more-data {
+            color: #95a5a6;
+            font-size: 0.9rem;
+            padding: 1rem;
+        }
+        .scroll-sentinel {
+            height: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Financial Data Sync Manager</h1>
+        <p>Sync data from Stripe and HaloPSA into QuickBooks Desktop</p>
+    </div>
+
+    <div class="container">
+        <div class="workflow">
+            <div class="workflow-step">
+                <div class="number">1</div>
+                <h3>Import Data</h3>
+                <p>Pull from Stripe & HaloPSA</p>
+            </div>
+            <div class="workflow-step">
+                <div class="number">2</div>
+                <h3>Map Customers</h3>
+                <p>Link accounts together</p>
+            </div>
+            <div class="workflow-step">
+                <div class="number">3</div>
+                <h3>Verify Data</h3>
+                <p>Review before syncing</p>
+            </div>
+            <div class="workflow-step">
+                <div class="number">4</div>
+                <h3>Sync to QB</h3>
+                <p>Push to QuickBooks</p>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <h2>Data Manager</h2>
+                <div class="nav-item active" data-view="dashboard">
+                    <span>📊</span> Dashboard
+                </div>
+                <div class="nav-item" data-view="customers">
+                    <span>👥</span> Customers
+                    <span class="badge" id="customer-badge">0</span>
+                </div>
+                <div class="nav-item" data-view="invoices">
+                    <span>📄</span> Invoices
+                    <span class="badge" id="invoice-badge">0</span>
+                </div>
+                <div class="nav-item" data-view="items">
+                    <span>📦</span> Items
+                    <span class="badge" id="item-badge">0</span>
+                </div>
+                <div class="nav-item" data-view="purchase-orders">
+                    <span>📋</span> Purchase Orders
+                    <span class="badge" id="po-badge">0</span>
+                </div>
+                <div class="nav-item" data-view="stripe-transactions">
+                    <span>💳</span> Stripe Transactions
+                    <span class="badge" id="stripe-tx-badge">0</span>
+                </div>
+                <div class="nav-item" data-view="mappings">
+                    <span>🔗</span> Mappings
+                    <span class="badge" id="mapping-badge">0</span>
+                </div>
+                <div class="nav-item" data-view="sync">
+                    <span>🔄</span> QuickBooks Sync
+                </div>
+            </div>
+
+            <div class="content">
+                <!-- Dashboard View -->
+                <div id="view-dashboard" class="view">
+                    <div class="content-header">
+                        <h2>Dashboard</h2>
+                        <button class="btn btn-primary" onclick="refreshDashboard()">🔄 Refresh Data</button>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="stat-customers">0</div>
+                            <div class="stat-label">HaloPSA Clients</div>
+                            <div class="stat-sublabel" id="stat-customers-mapped">0 mapped to Stripe</div>
+                        </div>
+                        <div class="stat-card green">
+                            <div class="stat-value" id="stat-invoices">0</div>
+                            <div class="stat-label">HaloPSA Invoices</div>
+                            <div class="stat-sublabel" id="stat-invoices-synced">0 synced to QB</div>
+                        </div>
+                        <div class="stat-card orange">
+                            <div class="stat-value" id="stat-items">0</div>
+                            <div class="stat-label">Items Extracted</div>
+                            <div class="stat-sublabel" id="stat-items-synced">0 synced to QB</div>
+                        </div>
+                        <div class="stat-card blue">
+                            <div class="stat-value" id="stat-transactions">0</div>
+                            <div class="stat-label">Stripe Transactions</div>
+                            <div class="stat-sublabel">Imported from Stripe</div>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-bottom: 1rem;">Quick Actions</h3>
+                    <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem;">
+                        <button class="btn btn-success" style="font-size: 1.1rem; padding: 1rem 1.5rem;" onclick="pullAllData()">⬇️ Pull All Data (Stripe + HaloPSA + Items)</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                        <button class="btn btn-primary" onclick="importStripeCustomers()">📥 Import Stripe Customers</button>
+                        <button class="btn btn-primary" onclick="importStripeTransactions()">💳 Import Stripe Transactions</button>
+                        <button class="btn btn-primary" onclick="importHaloPSAClients()">👥 Import HaloPSA Clients</button>
+                        <button class="btn btn-primary" onclick="importHaloPSAInvoices()">📄 Import HaloPSA Invoices</button>
+                        <button class="btn btn-primary" onclick="importHaloPSAPurchaseOrders()">📋 Import Purchase Orders</button>
+                        <button class="btn btn-primary" onclick="extractItems()">📦 Extract Items</button>
+                        <button class="btn btn-success" onclick="autoMapCustomers()">🔗 Auto-Map Customers</button>
+                        <button class="btn btn-secondary" onclick="switchView('mappings')">🔍 Review Mappings</button>
+                    </div>
+                </div>
+
+                <!-- Customers View (HaloPSA Only) -->
+                <div id="view-customers" class="view view-hidden">
+                    <div class="content-header">
+                        <h2>HaloPSA Clients (Source of Truth)</h2>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-primary" onclick="importHaloPSAClients()">📥 Import Clients</button>
+                            <button class="btn btn-primary" onclick="loadCustomers()">🔄 Refresh</button>
+                        </div>
+                    </div>
+
+                    <div class="controls">
+                        <input type="text" class="search-box" id="customer-search" placeholder="Search clients..." onkeyup="filterCustomers()">
+                        <select id="customer-status" onchange="filterCustomers()">
+                            <option value="all">All Clients</option>
+                            <option value="stripe-mapped">Mapped to Stripe</option>
+                            <option value="stripe-unmapped">Not Mapped to Stripe</option>
+                            <option value="qb-mapped">Mapped to QuickBooks</option>
+                        </select>
+                    </div>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>HaloPSA Client</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>Stripe Mapping</th>
+                                    <th>QB Mapping</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="customers-tbody">
+                                <tr><td colspan="6" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                        <div id="customers-scroll-sentinel" class="scroll-sentinel"></div>
+                        <div id="customers-load-more" class="load-more-container" style="display: none;">
+                            <div class="load-more-spinner"></div>
+                            <div style="margin-top: 0.5rem; color: #95a5a6;">Loading more clients...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Invoices View -->
+                <div id="view-invoices" class="view view-hidden">
+                    <div class="content-header">
+                        <h2>HaloPSA Invoices</h2>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-primary" onclick="importHaloPSAInvoices()">📥 Import Invoices</button>
+                            <button class="btn btn-primary" onclick="loadInvoices()">🔄 Refresh</button>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Invoice #</th>
+                                    <th>Client</th>
+                                    <th>Date</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>QB Sync</th>
+                                </tr>
+                            </thead>
+                            <tbody id="invoices-tbody">
+                                <tr><td colspan="6" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                        <div id="invoices-scroll-sentinel" class="scroll-sentinel"></div>
+                        <div id="invoices-load-more" class="load-more-container" style="display: none;">
+                            <div class="load-more-spinner"></div>
+                            <div style="margin-top: 0.5rem; color: #95a5a6;">Loading more invoices...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Items View -->
+                <div id="view-items" class="view view-hidden">
+                    <div class="content-header">
+                        <h2>QuickBooks Items</h2>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-primary" onclick="extractItems()">📦 Extract Items</button>
+                            <button class="btn btn-primary" onclick="loadItems()">🔄 Refresh</button>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Item Name</th>
+                                    <th>Type</th>
+                                    <th>Sales Price</th>
+                                    <th>Purchase Cost</th>
+                                    <th>QB Sync Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="items-tbody">
+                                <tr><td colspan="5" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                        <div id="items-scroll-sentinel" class="scroll-sentinel"></div>
+                        <div id="items-load-more" class="load-more-container" style="display: none;">
+                            <div class="load-more-spinner"></div>
+                            <div style="margin-top: 0.5rem; color: #95a5a6;">Loading more items...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Purchase Orders View -->
+                <div id="view-purchase-orders" class="view view-hidden">
+                    <div class="content-header">
+                        <h2>HaloPSA Purchase Orders</h2>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-primary" onclick="importHaloPSAPurchaseOrders()">📥 Import Purchase Orders</button>
+                            <button class="btn btn-primary" onclick="loadPurchaseOrders()">🔄 Refresh</button>
+                        </div>
+                    </div>
+
+                    <div class="controls">
+                        <input type="text" class="search-box" id="po-search" placeholder="Search purchase orders..." onkeyup="filterPurchaseOrders()">
+                        <select id="po-status" onchange="filterPurchaseOrders()">
+                            <option value="all">All POs</option>
+                            <option value="qb-synced">Synced to QuickBooks</option>
+                            <option value="qb-unsynced">Not Synced</option>
+                        </select>
+                    </div>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>PO Number</th>
+                                    <th>Vendor</th>
+                                    <th>Client</th>
+                                    <th>Date</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>QB Sync</th>
+                                </tr>
+                            </thead>
+                            <tbody id="purchase-orders-tbody">
+                                <tr><td colspan="7" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                        <div id="po-scroll-sentinel" class="scroll-sentinel"></div>
+                        <div id="po-load-more" class="load-more-container" style="display: none;">
+                            <div class="load-more-spinner"></div>
+                            <div style="margin-top: 0.5rem; color: #95a5a6;">Loading more purchase orders...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stripe Transactions View -->
+                <div id="view-stripe-transactions" class="view view-hidden">
+                    <div class="content-header">
+                        <h2>Stripe Transactions</h2>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-primary" onclick="importStripeTransactions()">💳 Import Transactions</button>
+                            <button class="btn btn-primary" onclick="loadStripeTransactions()">🔄 Refresh</button>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Transaction ID</th>
+                                    <th>Customer</th>
+                                    <th>Description</th>
+                                    <th>Amount</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stripe-transactions-tbody">
+                                <tr><td colspan="6" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                        <div id="stripe-tx-scroll-sentinel" class="scroll-sentinel"></div>
+                        <div id="stripe-tx-load-more" class="load-more-container" style="display: none;">
+                            <div class="load-more-spinner"></div>
+                            <div style="margin-top: 0.5rem; color: #95a5a6;">Loading more transactions...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mappings View -->
+                <div id="view-mappings" class="view view-hidden">
+                    <div class="content-header">
+                        <h2>Customer Mappings</h2>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-success" onclick="autoMapCustomers()">🔗 Auto-Map Customers</button>
+                            <button class="btn btn-primary" onclick="loadMappings()">🔄 Refresh</button>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Stripe → HaloPSA Mappings</h3>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Stripe Customer</th>
+                                    <th>HaloPSA Client</th>
+                                    <th>Auto-Matched</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stripe-mappings-tbody">
+                                <tr><td colspan="4" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                        <div id="mappings-scroll-sentinel" class="scroll-sentinel"></div>
+                        <div id="mappings-load-more" class="load-more-container" style="display: none;">
+                            <div class="load-more-spinner"></div>
+                            <div style="margin-top: 0.5rem; color: #95a5a6;">Loading more mappings...</div>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-top: 2rem; margin-bottom: 1rem;">QuickBooks → HaloPSA Mappings</h3>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>QuickBooks Customer</th>
+                                    <th>HaloPSA Client</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="qb-mappings-tbody">
+                                <tr><td colspan="3" style="text-align: center; padding: 2rem; color: #95a5a6;">QB mappings coming soon</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- QuickBooks Sync View -->
+                <div id="view-sync" class="view view-hidden">
+                    <div class="content-header">
+                        <h2>QuickBooks Sync</h2>
+                    </div>
+                    <p>QuickBooks sync configuration coming soon...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast">
+        <div id="toast-message"></div>
+    </div>
+
+    <script>
+        // InfiniteScroll Class - Reusable infinite scroll manager
+        class InfiniteScroll {
+            constructor(config) {
+                this.tbodyId = config.tbodyId;
+                this.sentinelId = config.sentinelId;
+                this.loadMoreId = config.loadMoreId;
+                this.fetchFunction = config.fetchFunction;
+                this.renderRowFunction = config.renderRowFunction;
+                this.emptyMessage = config.emptyMessage || 'No data found.';
+                this.loadingMessage = config.loadingMessage || 'Loading more...';
+                this.pageSize = config.pageSize || 50;
+
+                this.page = 0;
+                this.isLoading = false;
+                this.hasMore = true;
+                this.allData = [];
+                this.observer = null;
+            }
+
+            init() {
+                const sentinel = document.getElementById(this.sentinelId);
+                if (!sentinel) return;
+
+                this.observer = new IntersectionObserver(
+                    (entries) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting && this.hasMore && !this.isLoading) {
+                                this.loadMore();
+                            }
+                        });
+                    },
+                    { threshold: 0.1, rootMargin: '100px' }
+                );
+
+                this.observer.observe(sentinel);
+            }
+
+            destroy() {
+                if (this.observer) {
+                    this.observer.disconnect();
+                    this.observer = null;
+                }
+            }
+
+            reset() {
+                this.page = 0;
+                this.isLoading = false;
+                this.hasMore = true;
+                this.allData = [];
+                const tbody = document.getElementById(this.tbodyId);
+                if (tbody) tbody.innerHTML = '';
+            }
+
+            async loadMore() {
+                if (this.isLoading || !this.hasMore) return;
+
+                this.isLoading = true;
+                this.showLoadingIndicator();
+
+                try {
+                    const offset = this.page * this.pageSize;
+                    const newData = await this.fetchFunction(this.pageSize, offset);
+
+                    if (!newData || newData.length === 0) {
+                        this.hasMore = false;
+                        this.showNoMoreData();
+                        return;
+                    }
+
+                    this.allData.push(...newData);
+                    this.appendRows(newData);
+                    this.page++;
+
+                    if (newData.length < this.pageSize) {
+                        this.hasMore = false;
+                        this.showNoMoreData();
+                    }
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                    showToast('Error loading more data', 'error');
+                    this.hasMore = false;
+                } finally {
+                    this.isLoading = false;
+                    this.hideLoadingIndicator();
+                }
+            }
+
+            appendRows(data) {
+                const tbody = document.getElementById(this.tbodyId);
+                const fragment = document.createDocumentFragment();
+
+                data.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = this.renderRowFunction(item);
+
+                    // Copy data attributes if render function used them
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = this.renderRowFunction(item);
+                    const tempRow = tempDiv.querySelector('tr');
+                    if (tempRow) {
+                        Array.from(tempRow.attributes).forEach(attr => {
+                            row.setAttribute(attr.name, attr.value);
+                        });
+                    }
+
+                    fragment.appendChild(row);
+                });
+
+                tbody.appendChild(fragment);
+            }
+
+            showLoadingIndicator() {
+                const loadMore = document.getElementById(this.loadMoreId);
+                if (loadMore) loadMore.style.display = 'block';
+            }
+
+            hideLoadingIndicator() {
+                const loadMore = document.getElementById(this.loadMoreId);
+                if (loadMore) loadMore.style.display = 'none';
+            }
+
+            showNoMoreData() {
+                const loadMore = document.getElementById(this.loadMoreId);
+                if (loadMore) {
+                    loadMore.innerHTML = `<div class="no-more-data">✓ All data loaded (${this.allData.length} records)</div>`;
+                    loadMore.style.display = 'block';
+                }
+            }
+
+            showEmptyState(colspan) {
+                const tbody = document.getElementById(this.tbodyId);
+                tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align: center; padding: 2rem; color: #95a5a6;">${this.emptyMessage}</td></tr>`;
+                this.hasMore = false;
+            }
+        }
+
+        // Global scroll managers
+        let customersScroll = null;
+        let invoicesScroll = null;
+        let itemsScroll = null;
+        let purchaseOrdersScroll = null;
+        let stripeTransactionsScroll = null;
+        let mappingsScroll = null;
+
+        function switchView(viewName) {
+            document.querySelectorAll('.view').forEach(v => v.classList.add('view-hidden'));
+            document.getElementById(`view-${viewName}`).classList.remove('view-hidden');
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.view === viewName) item.classList.add('active');
+            });
+            loadViewData(viewName);
+        }
+
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => switchView(item.dataset.view));
+        });
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-message').textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => toast.classList.remove('show'), 5000);
+        }
+
+        function loadViewData(viewName) {
+            switch(viewName) {
+                case 'dashboard': loadDashboard(); break;
+                case 'customers': loadCustomers(); break;
+                case 'invoices': loadInvoices(); break;
+                case 'items': loadItems(); break;
+                case 'purchase-orders': loadPurchaseOrders(); break;
+                case 'stripe-transactions': loadStripeTransactions(); break;
+                case 'mappings': loadMappings(); break;
+            }
+        }
+
+        async function loadDashboard() {
+            // Helper function to safely update badge
+            const updateBadge = (badgeId, value) => {
+                const badge = document.getElementById(badgeId);
+                if (badge) badge.textContent = value || 0;
+            };
+
+            // Initialize all badges to 0 first
+            updateBadge('customer-badge', 0);
+            updateBadge('invoice-badge', 0);
+            updateBadge('item-badge', 0);
+            updateBadge('po-badge', 0);
+            updateBadge('stripe-tx-badge', 0);
+            updateBadge('mapping-badge', 0);
+
+            try {
+                // Fetch all data with individual error handling
+                const [customers, invoices, items, transactions, purchaseOrders] = await Promise.allSettled([
+                    fetch('/api/customers/all').then(r => r.json()).catch(e => { console.error('Customers fetch failed:', e); return []; }),
+                    fetch('/api/halopsa/invoices').then(r => r.json()).catch(e => { console.error('Invoices fetch failed:', e); return { invoices: [], pagination: { total: 0 } }; }),
+                    fetch('/api/items/all').then(r => r.json()).catch(e => { console.error('Items fetch failed:', e); return []; }),
+                    fetch('/api/stripe/transactions/imported').then(r => r.json()).catch(e => { console.error('Transactions fetch failed:', e); return []; }),
+                    fetch('/api/halopsa/purchase-orders').then(r => r.json()).catch(e => { console.error('POs fetch failed:', e); return { purchaseOrders: [], pagination: { total: 0 } }; })
+                ]);
+
+                // Extract values with fallbacks
+                const customersData = customers.status === 'fulfilled' ? customers.value : [];
+                const invoicesData = invoices.status === 'fulfilled' ? invoices.value : { invoices: [], pagination: { total: 0 } };
+                const itemsData = items.status === 'fulfilled' ? items.value : [];
+                const transactionsData = transactions.status === 'fulfilled' ? transactions.value : [];
+                const purchaseOrdersData = purchaseOrders.status === 'fulfilled' ? purchaseOrders.value : { purchaseOrders: [], pagination: { total: 0 } };
+
+                // Calculate counts with safety checks
+                const customersCount = Array.isArray(customersData) ? customersData.length : 0;
+                const mappedCount = Array.isArray(customersData) ? customersData.filter(c => c.stripe_customer_id).length : 0;
+                const invoicesCount = invoicesData.pagination?.total || (Array.isArray(invoicesData.invoices) ? invoicesData.invoices.length : 0);
+                const syncedInvoices = Array.isArray(invoicesData.invoices) ? invoicesData.invoices.filter(i => i.synced_to_qb).length : 0;
+                const itemsCount = Array.isArray(itemsData) ? itemsData.length : 0;
+                const syncedItems = Array.isArray(itemsData) ? itemsData.filter(i => i.synced_to_qb).length : 0;
+                const transactionsCount = transactionsData.pagination?.total || (Array.isArray(transactionsData.transactions) ? transactionsData.transactions.length : 0);
+                const purchaseOrdersCount = purchaseOrdersData.pagination?.total || (Array.isArray(purchaseOrdersData.purchaseOrders) ? purchaseOrdersData.purchaseOrders.length : 0);
+
+                // Update stat cards
+                document.getElementById('stat-customers').textContent = customersCount;
+                document.getElementById('stat-customers-mapped').textContent = `${mappedCount} mapped to Stripe`;
+                document.getElementById('stat-invoices').textContent = invoicesCount;
+                document.getElementById('stat-invoices-synced').textContent = `${syncedInvoices} synced to QB`;
+                document.getElementById('stat-items').textContent = itemsCount;
+                document.getElementById('stat-items-synced').textContent = `${syncedItems} synced to QB`;
+                document.getElementById('stat-transactions').textContent = transactionsCount;
+
+                // Update badge counters with calculated values
+                updateBadge('customer-badge', customersCount);
+                updateBadge('invoice-badge', invoicesCount);
+                updateBadge('item-badge', itemsCount);
+                updateBadge('po-badge', purchaseOrdersCount);
+                updateBadge('stripe-tx-badge', transactionsCount);
+                updateBadge('mapping-badge', mappedCount);
+
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                showToast('Error loading dashboard data', 'error');
+                // Badges already set to 0 at the start
+            }
+        }
+
+        async function loadCustomers() {
+            const tbody = document.getElementById('customers-tbody');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>';
+
+            // Destroy existing scroll manager
+            if (customersScroll) {
+                customersScroll.destroy();
+            }
+
+            // Create new scroll manager
+            customersScroll = new InfiniteScroll({
+                tbodyId: 'customers-tbody',
+                sentinelId: 'customers-scroll-sentinel',
+                loadMoreId: 'customers-load-more',
+                pageSize: 50,
+                emptyMessage: 'No HaloPSA clients found. Import data first.',
+                fetchFunction: async (limit, offset) => {
+                    const response = await fetch(`/api/customers/all?limit=${limit}&offset=${offset}`);
+                    return response.json();
+                },
+                renderRowFunction: (client) => `
+                    <tr data-stripe-mapped="${!!client.stripe_customer_id}" data-qb-mapped="${!!client.qb_customer_id}">
+                        <td><strong>${client.name}</strong></td>
+                        <td>${client.email || 'N/A'}</td>
+                        <td>${client.phone || 'N/A'}</td>
+                        <td>
+                            ${client.stripe_customer_id ?
+                                `<span class="status mapped">${client.stripe_customer_name}</span>` :
+                                `<span class="status unmapped">Not Mapped</span>`
+                            }
+                        </td>
+                        <td>
+                            ${client.qb_customer_id ?
+                                `<span class="status mapped">${client.qb_customer_name}</span>` :
+                                `<span class="status unmapped">Not Mapped</span>`
+                            }
+                        </td>
+                        <td>
+                            <button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">
+                                View Details
+                            </button>
+                        </td>
+                    </tr>
+                `
+            });
+
+            try {
+                tbody.innerHTML = '';
+                customersScroll.reset();
+                customersScroll.init();
+                await customersScroll.loadMore();
+
+                if (customersScroll.allData.length === 0) {
+                    customersScroll.showEmptyState(6);
+                }
+
+                // Update badge counter after loading
+                const totalCount = await fetch('/api/customers/all').then(r => r.json()).then(data => Array.isArray(data) ? data.length : 0).catch(() => 0);
+                const badge = document.getElementById('customer-badge');
+                if (badge) badge.textContent = totalCount;
+
+            } catch (error) {
+                console.error('Error loading customers:', error);
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #e74c3c;">Error loading customers</td></tr>';
+                showToast('Error loading customers', 'error');
+                const badge = document.getElementById('customer-badge');
+                if (badge) badge.textContent = 0;
+            }
+        }
+
+        function filterCustomers() {
+            const search = document.getElementById('customer-search').value.toLowerCase();
+            const status = document.getElementById('customer-status').value;
+
+            document.querySelectorAll('#customers-tbody tr').forEach(row => {
+                const text = row.textContent.toLowerCase();
+                const matchesSearch = text.includes(search);
+
+                let matchesStatus = true;
+                if (status === 'stripe-mapped') matchesStatus = row.dataset.stripeMapped === 'true';
+                if (status === 'stripe-unmapped') matchesStatus = row.dataset.stripeMapped === 'false';
+                if (status === 'qb-mapped') matchesStatus = row.dataset.qbMapped === 'true';
+
+                row.style.display = matchesSearch && matchesStatus ? '' : 'none';
+            });
+        }
+
+        async function loadInvoices() {
+            const tbody = document.getElementById('invoices-tbody');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>';
+
+            // Destroy existing scroll manager
+            if (invoicesScroll) {
+                invoicesScroll.destroy();
+            }
+
+            // Create new scroll manager
+            invoicesScroll = new InfiniteScroll({
+                tbodyId: 'invoices-tbody',
+                sentinelId: 'invoices-scroll-sentinel',
+                loadMoreId: 'invoices-load-more',
+                pageSize: 100,
+                emptyMessage: 'No invoices found.',
+                fetchFunction: async (limit, offset) => {
+                    const response = await fetch(`/api/halopsa/invoices?limit=${limit}&offset=${offset}`);
+                    const data = await response.json();
+                    return data.invoices || [];
+                },
+                renderRowFunction: (inv) => `
+                    <tr>
+                        <td><strong>${inv.invoice_number}</strong></td>
+                        <td>${inv.client_name || 'N/A'}</td>
+                        <td>${inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : 'N/A'}</td>
+                        <td>$${(inv.total_amount || 0).toFixed(2)}</td>
+                        <td><span class="status ${inv.status?.toLowerCase() || 'unknown'}">${inv.status || 'Unknown'}</span></td>
+                        <td>
+                            ${inv.synced_to_qb ?
+                                '<span class="status synced">Synced</span>' :
+                                '<span class="status unmapped">Not Synced</span>'
+                            }
+                        </td>
+                    </tr>
+                `
+            });
+
+            try {
+                tbody.innerHTML = '';
+                invoicesScroll.reset();
+                invoicesScroll.init();
+                await invoicesScroll.loadMore();
+
+                if (invoicesScroll.allData.length === 0) {
+                    invoicesScroll.showEmptyState(6);
+                }
+
+                // Update badge counter after loading
+                const invoicesData = await fetch('/api/halopsa/invoices').then(r => r.json()).catch(() => ({ pagination: { total: 0 } }));
+                const totalCount = invoicesData.pagination?.total || 0;
+                const badge = document.getElementById('invoice-badge');
+                if (badge) badge.textContent = totalCount;
+
+            } catch (error) {
+                console.error('Error loading invoices:', error);
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #e74c3c;">Error loading invoices</td></tr>';
+                showToast('Error loading invoices', 'error');
+                const badge = document.getElementById('invoice-badge');
+                if (badge) badge.textContent = 0;
+            }
+        }
+
+        async function loadItems() {
+            const tbody = document.getElementById('items-tbody');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>';
+
+            // Destroy existing scroll manager
+            if (itemsScroll) {
+                itemsScroll.destroy();
+            }
+
+            // Create new scroll manager
+            itemsScroll = new InfiniteScroll({
+                tbodyId: 'items-tbody',
+                sentinelId: 'items-scroll-sentinel',
+                loadMoreId: 'items-load-more',
+                pageSize: 100,
+                emptyMessage: 'No items found.',
+                fetchFunction: async (limit, offset) => {
+                    const response = await fetch(`/api/items/all?limit=${limit}&offset=${offset}`);
+                    return response.json();
+                },
+                renderRowFunction: (item) => `
+                    <tr>
+                        <td><strong>${item.name}</strong></td>
+                        <td>${item.item_type}</td>
+                        <td>$${(item.sales_price || 0).toFixed(2)}</td>
+                        <td>$${(item.purchase_cost || 0).toFixed(2)}</td>
+                        <td>
+                            ${item.synced_to_qb ?
+                                '<span class="status synced">Synced</span>' :
+                                '<span class="status unmapped">Not Synced</span>'
+                            }
+                        </td>
+                    </tr>
+                `
+            });
+
+            try {
+                tbody.innerHTML = '';
+                itemsScroll.reset();
+                itemsScroll.init();
+                await itemsScroll.loadMore();
+
+                if (itemsScroll.allData.length === 0) {
+                    itemsScroll.showEmptyState(5);
+                }
+
+                // Update badge counter after loading
+                const itemsData = await fetch('/api/items/all').then(r => r.json()).catch(() => []);
+                const totalCount = Array.isArray(itemsData) ? itemsData.length : 0;
+                const badge = document.getElementById('item-badge');
+                if (badge) badge.textContent = totalCount;
+
+            } catch (error) {
+                console.error('Error loading items:', error);
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem; color: #e74c3c;">Error loading items</td></tr>';
+                showToast('Error loading items', 'error');
+                const badge = document.getElementById('item-badge');
+                if (badge) badge.textContent = 0;
+            }
+        }
+
+        async function loadPurchaseOrders() {
+            const tbody = document.getElementById('purchase-orders-tbody');
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>';
+
+            // Destroy existing scroll manager
+            if (purchaseOrdersScroll) {
+                purchaseOrdersScroll.destroy();
+            }
+
+            // Create new scroll manager
+            purchaseOrdersScroll = new InfiniteScroll({
+                tbodyId: 'purchase-orders-tbody',
+                sentinelId: 'po-scroll-sentinel',
+                loadMoreId: 'po-load-more',
+                pageSize: 100,
+                emptyMessage: 'No purchase orders found.',
+                fetchFunction: async (limit, offset) => {
+                    const response = await fetch(`/api/halopsa/purchase-orders?limit=${limit}&offset=${offset}`);
+                    const data = await response.json();
+                    return data.purchaseOrders || [];
+                },
+                renderRowFunction: (po) => `
+                    <tr data-qb-synced="${!!po.synced_to_qb}">
+                        <td><strong>${po.po_number}</strong></td>
+                        <td>${po.vendor_name || 'N/A'}</td>
+                        <td>${po.client_name || 'N/A'}</td>
+                        <td>${po.po_date ? new Date(po.po_date).toLocaleDateString() : 'N/A'}</td>
+                        <td>$${(po.total_amount || 0).toFixed(2)}</td>
+                        <td><span class="status ${po.status?.toLowerCase() || 'unknown'}">${po.status || 'Unknown'}</span></td>
+                        <td>
+                            ${po.synced_to_qb ?
+                                '<span class="status synced">Synced</span>' :
+                                '<span class="status unmapped">Not Synced</span>'
+                            }
+                        </td>
+                    </tr>
+                `
+            });
+
+            try {
+                tbody.innerHTML = '';
+                purchaseOrdersScroll.reset();
+                purchaseOrdersScroll.init();
+                await purchaseOrdersScroll.loadMore();
+
+                if (purchaseOrdersScroll.allData.length === 0) {
+                    purchaseOrdersScroll.showEmptyState(7);
+                }
+
+                // Update badge counter after loading
+                const poData = await fetch('/api/halopsa/purchase-orders').then(r => r.json()).catch(() => ({ pagination: { total: 0 } }));
+                const totalCount = poData.pagination?.total || 0;
+                const badge = document.getElementById('po-badge');
+                if (badge) badge.textContent = totalCount;
+
+            } catch (error) {
+                console.error('Error loading purchase orders:', error);
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #e74c3c;">Error loading purchase orders</td></tr>';
+                showToast('Error loading purchase orders', 'error');
+                const badge = document.getElementById('po-badge');
+                if (badge) badge.textContent = 0;
+            }
+        }
+
+        function filterPurchaseOrders() {
+            const search = document.getElementById('po-search').value.toLowerCase();
+            const status = document.getElementById('po-status').value;
+
+            document.querySelectorAll('#purchase-orders-tbody tr').forEach(row => {
+                const text = row.textContent.toLowerCase();
+                const matchesSearch = text.includes(search);
+
+                let matchesStatus = true;
+                if (status === 'qb-synced') matchesStatus = row.dataset.qbSynced === 'true';
+                if (status === 'qb-unsynced') matchesStatus = row.dataset.qbSynced === 'false';
+
+                row.style.display = matchesSearch && matchesStatus ? '' : 'none';
+            });
+        }
+
+        async function loadStripeTransactions() {
+            const tbody = document.getElementById('stripe-transactions-tbody');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>';
+
+            // Destroy existing scroll manager
+            if (stripeTransactionsScroll) {
+                stripeTransactionsScroll.destroy();
+            }
+
+            // Create new scroll manager
+            stripeTransactionsScroll = new InfiniteScroll({
+                tbodyId: 'stripe-transactions-tbody',
+                sentinelId: 'stripe-tx-scroll-sentinel',
+                loadMoreId: 'stripe-tx-load-more',
+                pageSize: 100,
+                emptyMessage: 'No Stripe transactions found.',
+                fetchFunction: async (limit, offset) => {
+                    const response = await fetch(`/api/stripe/transactions/imported?limit=${limit}&offset=${offset}`);
+                    const data = await response.json();
+                    return data.transactions || [];
+                },
+                renderRowFunction: (tx) => `
+                    <tr>
+                        <td><strong>${tx.stripe_id.substring(0, 20)}...</strong></td>
+                        <td>${tx.customer_name || tx.customer_email || 'N/A'}</td>
+                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${tx.description || 'N/A'}</td>
+                        <td>$${((tx.amount || 0) / 100).toFixed(2)} ${tx.currency?.toUpperCase() || ''}</td>
+                        <td>${tx.created ? new Date(tx.created * 1000).toLocaleDateString() : 'N/A'}</td>
+                        <td><span class="status ${tx.status?.toLowerCase() || 'unknown'}">${tx.status || 'Unknown'}</span></td>
+                    </tr>
+                `
+            });
+
+            try {
+                tbody.innerHTML = '';
+                stripeTransactionsScroll.reset();
+                stripeTransactionsScroll.init();
+                await stripeTransactionsScroll.loadMore();
+
+                if (stripeTransactionsScroll.allData.length === 0) {
+                    stripeTransactionsScroll.showEmptyState(6);
+                }
+
+                // Update badge counter after loading
+                const txData = await fetch('/api/stripe/transactions/imported').then(r => r.json()).catch(() => ({ pagination: { total: 0 } }));
+                const totalCount = txData.pagination?.total || 0;
+                const badge = document.getElementById('stripe-tx-badge');
+                if (badge) badge.textContent = totalCount;
+
+            } catch (error) {
+                console.error('Error loading Stripe transactions:', error);
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #e74c3c;">Error loading transactions</td></tr>';
+                showToast('Error loading Stripe transactions', 'error');
+                const badge = document.getElementById('stripe-tx-badge');
+                if (badge) badge.textContent = 0;
+            }
+        }
+
+        async function loadMappings() {
+            const tbody = document.getElementById('stripe-mappings-tbody');
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>';
+
+            try {
+                const mappings = await fetch('/api/customers/mappings').then(r => r.json());
+
+                if (mappings.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #95a5a6;">No mappings found.</td></tr>';
+                    // Update badge to 0
+                    const badge = document.getElementById('mapping-badge');
+                    if (badge) badge.textContent = 0;
+                    return;
+                }
+
+                tbody.innerHTML = mappings.map(m => `
+                    <tr>
+                        <td><strong>${m.stripe_customer_name || 'N/A'}</strong><br><small>${m.stripe_customer_email || ''}</small></td>
+                        <td><strong>${m.halopsa_client_name || 'N/A'}</strong></td>
+                        <td>${m.auto_mapped ? '<span class="status synced">Yes</span>' : '<span class="status unmapped">No</span>'}</td>
+                        <td>${m.mapping_confirmed ? '<span class="status mapped">Confirmed</span>' : '<span class="status unmapped">Pending</span>'}</td>
+                    </tr>
+                `).join('');
+
+                // Update badge counter after loading
+                const badge = document.getElementById('mapping-badge');
+                if (badge) badge.textContent = mappings.length;
+
+            } catch (error) {
+                console.error('Error loading mappings:', error);
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #e74c3c;">Error loading mappings</td></tr>';
+                showToast('Error loading mappings', 'error');
+                const badge = document.getElementById('mapping-badge');
+                if (badge) badge.textContent = 0;
+            }
+        }
+
+        async function refreshDashboard() {
+            showToast('Refreshing dashboard...', 'info');
+            await loadDashboard();
+            showToast('Dashboard refreshed', 'success');
+        }
+
+        async function importStripeData() {
+            showToast('Importing Stripe data...', 'info');
+            try {
+                const response = await fetch('/api/stripe/import/customers', { method: 'POST' });
+                const result = await response.json();
+                showToast(result.message, result.success ? 'success' : 'error');
+                await loadDashboard();
+            } catch (error) {
+                showToast('Error importing Stripe data', 'error');
+            }
+        }
+
+        async function importHaloPSAData() {
+            showToast('Importing HaloPSA data...', 'info');
+            try {
+                const response = await fetch('/api/halopsa/import/clients', { method: 'POST' });
+                const result = await response.json();
+                showToast(result.message, result.success ? 'success' : 'error');
+                await loadDashboard();
+            } catch (error) {
+                showToast('Error importing HaloPSA data', 'error');
+            }
+        }
+
+        async function autoMapCustomers() {
+            showToast('Auto-mapping customers...', 'info');
+            try {
+                const response = await fetch('/api/customers/automatch', { method: 'POST' });
+                const result = await response.json();
+                showToast(`Mapped ${result.matches?.length || 0} customers`, 'success');
+                await loadDashboard();
+            } catch (error) {
+                showToast('Error auto-mapping customers', 'error');
+            }
+        }
+
+        // New specific import functions
+        async function importStripeCustomers() {
+            showToast('Importing Stripe customers...', 'info');
+            try {
+                const response = await fetch('/api/stripe/import/customers', { method: 'POST' });
+                const result = await response.json();
+                showToast(result.message || 'Stripe customers imported', result.success ? 'success' : 'error');
+                await loadDashboard();
+            } catch (error) {
+                showToast('Error importing Stripe customers', 'error');
+            }
+        }
+
+        async function importStripeTransactions() {
+            showToast('Importing Stripe transactions...', 'info');
+            try {
+                const response = await fetch('/api/stripe/import/transactions', { method: 'POST' });
+                const result = await response.json();
+                showToast(result.message || 'Stripe transactions imported', result.success ? 'success' : 'error');
+                await loadDashboard();
+                // If on Stripe Transactions view, refresh that view too
+                const currentView = document.querySelector('.view:not(.view-hidden)');
+                if (currentView && currentView.id === 'view-stripe-transactions') {
+                    await loadStripeTransactions();
+                }
+            } catch (error) {
+                showToast('Error importing Stripe transactions', 'error');
+            }
+        }
+
+        async function importHaloPSAClients() {
+            showToast('Importing HaloPSA clients...', 'info');
+            try {
+                const response = await fetch('/api/halopsa/import/clients', { method: 'POST' });
+                const result = await response.json();
+                showToast(result.message || 'HaloPSA clients imported', result.success ? 'success' : 'error');
+                await loadDashboard();
+                // If on Customers view, refresh that view too
+                const currentView = document.querySelector('.view:not(.view-hidden)');
+                if (currentView && currentView.id === 'view-customers') {
+                    await loadCustomers();
+                }
+            } catch (error) {
+                showToast('Error importing HaloPSA clients', 'error');
+            }
+        }
+
+        async function importHaloPSAInvoices() {
+            showToast('Importing HaloPSA invoices...', 'info');
+            try {
+                const response = await fetch('/api/halopsa/import/invoices', { method: 'POST' });
+                const result = await response.json();
+                showToast(result.message || 'HaloPSA invoices imported', result.success ? 'success' : 'error');
+                await loadDashboard();
+                // If on Invoices view, refresh that view too
+                const currentView = document.querySelector('.view:not(.view-hidden)');
+                if (currentView && currentView.id === 'view-invoices') {
+                    await loadInvoices();
+                }
+            } catch (error) {
+                showToast('Error importing HaloPSA invoices', 'error');
+            }
+        }
+
+        async function importHaloPSAPurchaseOrders() {
+            showToast('Importing HaloPSA purchase orders...', 'info');
+            try {
+                const response = await fetch('/api/halopsa/import/purchase-orders', { method: 'POST' });
+                const result = await response.json();
+                showToast(result.message || 'Purchase orders imported', result.success ? 'success' : 'error');
+                await loadDashboard();
+                // If on Purchase Orders view, refresh that view too
+                const currentView = document.querySelector('.view:not(.view-hidden)');
+                if (currentView && currentView.id === 'view-purchase-orders') {
+                    await loadPurchaseOrders();
+                }
+            } catch (error) {
+                showToast('Error importing purchase orders', 'error');
+            }
+        }
+
+        async function extractItems() {
+            showToast('Extracting items from HaloPSA data...', 'info');
+            try {
+                const response = await fetch('/api/items/extract', { method: 'POST' });
+                const result = await response.json();
+                showToast(result.message || 'Items extracted successfully', result.success ? 'success' : 'error');
+                await loadDashboard();
+                // If on Items view, refresh that view too
+                const currentView = document.querySelector('.view:not(.view-hidden)');
+                if (currentView && currentView.id === 'view-items') {
+                    await loadItems();
+                }
+            } catch (error) {
+                showToast('Error extracting items', 'error');
+            }
+        }
+
+        async function pullAllData() {
+            showToast('Starting full data import from Stripe and HaloPSA...', 'info');
+
+            try {
+                // Import all data in sequence with progress updates
+                showToast('Step 1/6: Importing Stripe customers...', 'info');
+                await importStripeCustomers();
+
+                showToast('Step 2/6: Importing Stripe transactions...', 'info');
+                await importStripeTransactions();
+
+                showToast('Step 3/6: Importing HaloPSA clients...', 'info');
+                await importHaloPSAClients();
+
+                showToast('Step 4/6: Importing HaloPSA invoices...', 'info');
+                await importHaloPSAInvoices();
+
+                showToast('Step 5/6: Importing HaloPSA purchase orders...', 'info');
+                await importHaloPSAPurchaseOrders();
+
+                showToast('Step 6/6: Extracting items from invoices...', 'info');
+                await extractItems();
+
+                showToast('✅ All data pulled successfully!', 'success');
+                await loadDashboard();
+            } catch (error) {
+                console.error('Error during full data pull:', error);
+                showToast('Error during data import - check console for details', 'error');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDashboard();
+        });
+    </script>
+</body>
+</html>
