@@ -1,9 +1,14 @@
-# Project data files
+# Project data files and databases
 *.iif
 *.csv
 *.qbw
 *.qbw.*
 *.zip
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
 QBBackupTemp*/
 QuickBooksAutoDataRecovery/
 ~2024 Installer/
@@ -13,10 +18,34 @@ debug.log
 dental_t1.*
 data/
 Documents/
+
+# Environment and configuration files
 .env
 .env.local
 .env.*
 .env.*.local
+config.json
+config.local.json
+*.config.local.*
+
+# Test and debug scripts
+test-*.js
+test-*.html
+test_*.sql
+check-*.js
+check-*.ps1
+debug-*.js
+verify-*.js
+populate-*.js
+migrate-*.js
+temp.html
+
+# Generated documentation (keep source docs like README.md)
+*_IMPLEMENTATION.md
+*_GUIDE.md
+*_SETUP.md
+*_ISSUE.md
+*_DESIGN.md
 
 # Docker and build artifacts
 .docker/
