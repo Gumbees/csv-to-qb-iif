@@ -1,0 +1,576 @@
+/**
+ * Workflow Modal Styling
+ * Modern, clean design with smooth animations
+ */
+
+/* ==================== Modal Overlay & Container ==================== */
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 9998;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.modal-overlay.active {
+    opacity: 1;
+}
+
+.workflow-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    z-index: 9999;
+    max-height: 90vh;
+    overflow-y: auto;
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.workflow-modal.active {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+/* ==================== Modal Header ==================== */
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px 32px;
+    border-bottom: 1px solid #e5e7eb;
+    background: linear-gradient(135deg, #32373c 0%, #4a5158 100%);
+    border-radius: 12px 12px 0 0;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+    color: white;
+}
+
+.modal-close {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    font-size: 32px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    line-height: 1;
+    padding: 0;
+}
+
+.modal-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: rotate(90deg);
+}
+
+/* ==================== Modal Body ==================== */
+
+.modal-body {
+    padding: 32px;
+}
+
+.modal-description {
+    margin: 0 0 24px 0;
+    color: #6b7280;
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+/* ==================== Import Options ==================== */
+
+.import-options {
+    display: grid;
+    gap: 16px;
+}
+
+.workflow-btn {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 24px;
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    width: 100%;
+}
+
+.workflow-btn:hover {
+    border-color: #32373c;
+    background: #f9fafb;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(50, 55, 60, 0.15);
+}
+
+.workflow-btn .btn-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+}
+
+.workflow-btn .btn-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.workflow-btn .btn-label {
+    font-size: 18px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.workflow-btn .btn-subtitle {
+    font-size: 14px;
+    color: #6b7280;
+}
+
+/* Specific button colors */
+.workflow-btn.stripe-btn:hover {
+    border-color: #635bff;
+}
+
+.workflow-btn.halopsa-btn:hover {
+    border-color: #0ea5e9;
+}
+
+.workflow-btn.qb-btn:hover {
+    border-color: #10b981;
+}
+
+.workflow-btn.all-btn {
+    background: linear-gradient(135deg, #32373c 0%, #4a5158 100%);
+    border-color: transparent;
+    color: white;
+}
+
+.workflow-btn.all-btn .btn-label,
+.workflow-btn.all-btn .btn-subtitle {
+    color: white;
+}
+
+.workflow-btn.all-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(50, 55, 60, 0.3);
+}
+
+/* ==================== Progress Indicators ==================== */
+
+.import-progress {
+    margin-top: 32px;
+    padding: 24px;
+    background: #f9fafb;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+}
+
+.import-progress.hidden {
+    display: none;
+}
+
+.progress-header h4 {
+    margin: 0 0 16px 0;
+    font-size: 18px;
+    color: #111827;
+}
+
+.progress-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: white;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    border-left: 3px solid transparent;
+}
+
+.progress-item:last-child {
+    margin-bottom: 0;
+}
+
+.progress-item .progress-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.progress-item .progress-label {
+    flex: 1;
+    color: #374151;
+    font-size: 14px;
+}
+
+.progress-item.success {
+    border-left-color: #10b981;
+    background: #ecfdf5;
+}
+
+.progress-item.error {
+    border-left-color: #ef4444;
+    background: #fef2f2;
+}
+
+.progress-item.info {
+    border-left-color: #3b82f6;
+    background: #eff6ff;
+}
+
+/* ==================== Mapping Steps ==================== */
+
+.mapping-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.step {
+    padding: 24px;
+    background: #f9fafb;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+}
+
+.step h4 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    color: #111827;
+}
+
+.step-description {
+    margin: 0 0 16px 0;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+.step-buttons {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.step-buttons .workflow-btn {
+    flex: 1;
+    min-width: 200px;
+    padding: 16px 20px;
+}
+
+.step-buttons .workflow-btn .btn-icon {
+    font-size: 24px;
+}
+
+.step-buttons .workflow-btn .btn-label {
+    font-size: 16px;
+}
+
+.step-result {
+    margin-top: 16px;
+}
+
+.badge-container {
+    margin-top: 12px;
+}
+
+.badge {
+    display: inline-block;
+    padding: 6px 12px;
+    background: #32373c;
+    color: white;
+    border-radius: 16px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* ==================== Verification Checklist ==================== */
+
+.verification-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.check-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: #f9fafb;
+    border-radius: 8px;
+    border-left: 4px solid #e5e7eb;
+    transition: all 0.2s;
+}
+
+.check-item[data-status="pass"] {
+    border-left-color: #10b981;
+    background: #ecfdf5;
+}
+
+.check-item[data-status="fail"] {
+    border-left-color: #ef4444;
+    background: #fef2f2;
+}
+
+.check-item[data-status="warning"] {
+    border-left-color: #f59e0b;
+    background: #fffbeb;
+}
+
+.check-item[data-status="checking"] {
+    border-left-color: #3b82f6;
+    background: #eff6ff;
+}
+
+.check-item .check-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.check-item .check-label {
+    flex: 1;
+    font-weight: 500;
+    color: #111827;
+}
+
+.check-item .check-result {
+    color: #6b7280;
+    font-size: 14px;
+}
+
+/* ==================== Sync Summary ==================== */
+
+.sync-summary {
+    padding: 20px;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 8px;
+    margin-bottom: 24px;
+}
+
+.sync-summary h4 {
+    margin: 0 0 12px 0;
+    color: #166534;
+    font-size: 16px;
+}
+
+.sync-summary ul {
+    margin: 0;
+    padding-left: 20px;
+    color: #166534;
+}
+
+.sync-summary li {
+    margin-bottom: 8px;
+}
+
+.sync-summary li:last-child {
+    margin-bottom: 0;
+}
+
+.summary-loading {
+    color: #6b7280;
+    font-style: italic;
+}
+
+.error-message {
+    color: #dc2626;
+    padding: 12px;
+    background: #fef2f2;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+/* ==================== Modal Actions ==================== */
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.btn-cancel {
+    padding: 12px 24px;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 500;
+    color: #374151;
+    transition: all 0.2s;
+}
+
+.btn-cancel:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+}
+
+.btn-primary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #32373c 0%, #4a5158 100%);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 500;
+    color: white;
+    transition: all 0.2s;
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(50, 55, 60, 0.3);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary .btn-icon {
+    font-size: 18px;
+}
+
+/* ==================== Responsive Design ==================== */
+
+@media (max-width: 768px) {
+    .workflow-modal {
+        max-width: 95vw !important;
+        max-height: 95vh;
+    }
+
+    .modal-header {
+        padding: 20px;
+    }
+
+    .modal-header h2 {
+        font-size: 20px;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .workflow-btn {
+        padding: 16px 20px;
+    }
+
+    .workflow-btn .btn-icon {
+        font-size: 28px;
+    }
+
+    .workflow-btn .btn-label {
+        font-size: 16px;
+    }
+
+    .workflow-btn .btn-subtitle {
+        font-size: 13px;
+    }
+
+    .step-buttons {
+        flex-direction: column;
+    }
+
+    .step-buttons .workflow-btn {
+        min-width: 100%;
+    }
+
+    .modal-actions {
+        flex-direction: column-reverse;
+    }
+
+    .btn-cancel,
+    .btn-primary {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* ==================== Animations ==================== */
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.progress-item {
+    animation: slideIn 0.3s ease;
+}
+
+/* ==================== Scrollbar Styling ==================== */
+
+.workflow-modal::-webkit-scrollbar {
+    width: 8px;
+}
+
+.workflow-modal::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+.workflow-modal::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.workflow-modal::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* ==================== Utility Classes ==================== */
+
+.hidden {
+    display: none !important;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.mt-2 {
+    margin-top: 8px;
+}
+
+.mt-4 {
+    margin-top: 16px;
+}
+
+.mb-2 {
+    margin-bottom: 8px;
+}
+
+.mb-4 {
+    margin-bottom: 16px;
+}

@@ -151,6 +151,11 @@ class ConfigAPI {
             ],
             'general': [
                 'auto_match_threshold', 'duplicate_check_enabled', 'webhook_enabled'
+            ],
+            'halopsa': [
+                'halopsa_api_url', 'halopsa_client_id', 'halopsa_client_secret', 
+                'halopsa_access_token', 'halopsa_purchase_order_report_id', 
+                'halopsa_invoice_report_id'
             ]
         };
         
@@ -229,6 +234,7 @@ class ConfigAPI {
             const status = {
                 stripe: { configured: false, testable: false },
                 quickbooks: { configured: false },
+                halopsa: { configured: false, testable: false },
                 general: { ready: false }
             };
             
@@ -241,8 +247,14 @@ class ConfigAPI {
             const qbFile = configs.find(c => c.key === 'quickbooks_company_file');
             status.quickbooks.configured = !!qbFile && qbFile.value.length > 0;
             
+            // Check HaloPSA configuration
+            const halopsaKey = configs.find(c => c.key === 'halopsa_api_key');
+            const halopsaUrl = configs.find(c => c.key === 'halopsa_api_url');
+            status.halopsa.configured = !!halopsaKey && halopsaKey.value.length > 0 && !!halopsaUrl && halopsaUrl.value.length > 0;
+            status.halopsa.testable = status.halopsa.configured;
+            
             // Overall readiness
-            status.general.ready = status.stripe.configured;
+            status.general.ready = status.stripe.configured || status.halopsa.configured;
             
             return status;
         } catch (error) {

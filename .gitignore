@@ -37,6 +37,7 @@ lerna-debug.log*
 .Trashes
 ehthumbs.db
 Thumbs.db
+nul
 
 # Editor files
 .vscode/

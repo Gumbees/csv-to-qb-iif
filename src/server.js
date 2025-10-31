@@ -13,6 +13,10 @@ const ConfigAPI = require('./config-api');
 const crypto = require('crypto');
 const QBWCService = require('./qbwc-service');
 const ItemSyncService = require('./item-sync-service');
+const TransactionMapper = require('./transaction-mapper');
+const ClientMapper = require('./client-mapper');
+const AIService = require('./ai-service');
+const registerAIEndpoints = require('./ai-endpoints');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -20,6 +24,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 
 const db = new Database();
 const qbwcService = new QBWCService();
 const configAPI = new ConfigAPI(db);
+const aiService = new AIService(db);
 // Stripe integration now handled by StripeAPI class
 
 // Ensure DB initialization completes before serving traffic
@@ -1041,8 +1046,100 @@ app.post('/api/qbd/accounts/default', async (req, res) => {
     }
 });
 
+// Trigger QuickBooks Chart of Accounts sync via QBWC
+app.post('/api/qbd/sync/accounts', async (req, res) => {
+    try {
+        // Add accounts sync to persistent queue (priority 10 = high priority)
+        qbwcService.queueSyncRequest('accounts', 10);
+
+        res.json({
+            success: true,
+            message: 'Chart of Accounts sync queued successfully',
+            note: 'Accounts will be synced when QuickBooks Web Connector connects. Click "Update Selected" in QBWC to start sync.'
+        });
+    } catch (err) {
+        console.error('Error triggering account sync:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Trigger QuickBooks Customer list sync via QBWC
+app.post('/api/qbd/sync/customers', async (req, res) => {
+    try {
+        // Add customers sync to persistent queue (priority 20 = medium priority)
+        qbwcService.queueSyncRequest('customers', 20);
+
+        res.json({
+            success: true,
+            message: 'Customer sync queued successfully',
+            note: 'Customers will be synced when QuickBooks Web Connector connects. Click "Update Selected" in QBWC to start sync.'
+        });
+    } catch (err) {
+        console.error('Error triggering customer sync:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get synced QuickBooks accounts from database
+app.get('/api/qbd/sync/accounts', async (req, res) => {
+    try {
+        const accounts = await db.all('SELECT * FROM qb_accounts ORDER BY account_name ASC');
+        res.json({
+            success: true,
+            count: accounts.length,
+            accounts: accounts
+        });
+    } catch (err) {
+        console.error('Error getting synced QB accounts:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get synced QuickBooks customers from database with optional filtering
+app.get('/api/qbd/sync/customers', async (req, res) => {
+    try {
+        const { filter = 'all' } = req.query;
+
+        // Build query based on filter
+        let query = `
+            SELECT
+                qc.*,
+                cm.id as mapping_id,
+                cm.halopsa_client_id,
+                cm.halopsa_client_name,
+                cm.mapping_confirmed
+            FROM qb_customers qc
+            LEFT JOIN customer_mappings cm ON qc.qb_list_id = cm.qb_customer_id
+        `;
+
+        // Apply filter
+        const conditions = [];
+        if (filter === 'unmapped') {
+            conditions.push('cm.id IS NULL');
+        } else if (filter === 'mapped') {
+            conditions.push('cm.id IS NOT NULL');
+        }
+
+        if (conditions.length > 0) {
+            query += ' WHERE ' + conditions.join(' AND ');
+        }
+
+        query += ' ORDER BY qc.qb_full_name ASC';
+
+        const customers = await db.all(query);
+        res.json({
+            success: true,
+            count: customers.length,
+            customers: customers
+        });
+    } catch (err) {
+        console.error('Error getting synced QB customers:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // QuickBooks Web Connector Endpoints
-app.post('/qbwc', express.text({ type: '*/*' }), async (req, res) => {
+app.post('/qbwc', express.text({ type: '*/*', limit: '50mb' }), async (req, res) => {
     // Parse the QBWC SOAP request
     const soapRequest = req.body;
     console.log('QBWC Request received:', soapRequest.substring(0, 500) + '...');
@@ -1064,11 +1161,15 @@ app.post('/qbwc', express.text({ type: '*/*' }), async (req, res) => {
 </soap:Envelope>`;
     } 
     else if (soapRequest.includes('clientVersion')) {
+        // QBWC requires response to start with W:, E:, or O:
+        // W: = Warning (proceed anyway)
+        // E: = Error (stop)
+        // O: = OK
         responseXML = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
     <soap:Body>
         <clientVersionResponse xmlns="http://developer.intuit.com/">
-            <clientVersionResult>nvu</clientVersionResult>
+            <clientVersionResult>O:34.0</clientVersionResult>
         </clientVersionResponse>
     </soap:Body>
 </soap:Envelope>`;
@@ -1096,15 +1197,16 @@ app.post('/qbwc', express.text({ type: '*/*' }), async (req, res) => {
         }
         
         // QuickBooks Web Connector expects specific authentication response format
-        // Success: <string>ticket</string>
+        // Must return array with exactly 2 strings: [ticket, companyFileName]
+        // Success: <string>ticket</string><string></string>  (empty company file = use current)
         // Failure: <string></string><string>errorCode</string>
         let authResultXML;
         if (authResult.errorCode) {
             // Authentication failed
             authResultXML = `<string></string><string>${authResult.errorCode}</string>`;
         } else {
-            // Authentication successful
-            authResultXML = `<string>${authResult.ticket}</string>`;
+            // Authentication successful - empty string for company file means use current open company file
+            authResultXML = `<string>${authResult.ticket}</string><string></string>`;
         }
         
         responseXML = `<?xml version="1.0" encoding="utf-8"?>
@@ -1133,17 +1235,32 @@ app.post('/qbwc', express.text({ type: '*/*' }), async (req, res) => {
         let qbxmlData = '';
 
         try {
-            // Priority 1: Check if account sync is pending
-            const accountSyncPending = session.accountSyncPending || false;
+            // Check persistent sync request queue first (survives session reconnects)
+            const nextRequest = qbwcService.getNextSyncRequest();
 
-            if (accountSyncPending) {
-                console.log('QBWC: Generating AccountQuery request');
-                qbxmlData = qbwcService.generateAccountQueryQBXML();
-                session.currentRequest = 'accounts';
-                session.accountSyncPending = false; // Clear flag
-                console.log('QBWC: Generated QBXML for Chart of Accounts query');
+            if (nextRequest) {
+                console.log(`QBWC: Processing queued sync request: ${nextRequest.type}`);
+
+                if (nextRequest.type === 'accounts') {
+                    console.log('QBWC: Generating AccountQuery request');
+                    qbxmlData = qbwcService.generateAccountQueryQBXML();
+                    session.currentRequest = 'accounts';
+                    console.log('QBWC: Generated QBXML for Chart of Accounts query');
+                }
+                else if (nextRequest.type === 'customers') {
+                    console.log('QBWC: Generating CustomerQuery request');
+                    qbxmlData = qbwcService.generateCustomerQueryQBXML();
+                    session.currentRequest = 'customers';
+                    console.log('QBWC: Generated QBXML for Customer list query');
+                }
+                else if (nextRequest.type === 'items') {
+                    console.log('QBWC: Generating ItemQuery request');
+                    qbxmlData = qbwcService.generateItemQueryQBXML();
+                    session.currentRequest = 'item_query';
+                    console.log('QBWC: Generated QBXML for Item list query');
+                }
             }
-            // Priority 2: Check if we have unsynced items to process
+            // No queued requests - default to item sync workflow
             else {
                 const itemSyncService = new ItemSyncService(db);
                 const unsyncedItems = await itemSyncService.getUnsyncedItems();
@@ -1151,14 +1268,53 @@ app.post('/qbwc', express.text({ type: '*/*' }), async (req, res) => {
                 if (unsyncedItems.length > 0) {
                     console.log(`QBWC: Found ${unsyncedItems.length} unsynced items to process`);
 
-                    // Store item IDs in session for later marking as synced
-                    session.pendingItemIds = unsyncedItems.map(item => item.id);
-                    session.currentRequest = 'items';
+                    // First check if we need to query QB items
+                    const qbItemCount = db.db.prepare('SELECT COUNT(*) as count FROM qb_items WHERE qb_list_id IS NOT NULL').get();
 
-                    // Generate QBXML for all items
-                    qbxmlData = qbwcService.generateAllItemsQBXML(unsyncedItems);
+                    if (qbItemCount.count === 0 && !session.itemsQueried) {
+                        // No QB items in database yet, query first
+                        console.log('QBWC: No QB items in database, querying QuickBooks first...');
+                        qbxmlData = qbwcService.generateItemQueryQBXML();
+                        session.currentRequest = 'item_query';
+                        session.itemsQueried = true;
+                    } else {
+                        // Separate items into add vs modify based on QB data
+                        const itemsToAdd = [];
+                        const itemsToModify = [];
 
-                    console.log('QBWC: Generated QBXML for items');
+                        for (const item of unsyncedItems) {
+                            const qbItem = db.db.prepare(
+                                'SELECT qb_list_id, qb_edit_sequence FROM qb_items WHERE name = ? AND item_type = ? AND qb_list_id IS NOT NULL'
+                            ).get(item.name, item.item_type);
+
+                            if (qbItem) {
+                                // Item exists in QB, prepare for modification
+                                item.qb_list_id = qbItem.qb_list_id;
+                                item.qb_edit_sequence = qbItem.qb_edit_sequence;
+                                itemsToModify.push(item);
+                            } else {
+                                // New item, add it
+                                itemsToAdd.push(item);
+                            }
+                        }
+
+                        console.log(`QBWC: ${itemsToAdd.length} items to add, ${itemsToModify.length} items to modify`);
+
+                        // Store item IDs in session for later marking as synced
+                        session.pendingItemIds = unsyncedItems.map(item => item.id);
+
+                        // Generate QBXML - prioritize modifications first, then additions
+                        if (itemsToModify.length > 0) {
+                            qbxmlData = qbwcService.generateItemModQBXML(itemsToModify);
+                            session.currentRequest = 'item_mod';
+                            session.pendingAdds = itemsToAdd; // Store for next request
+                        } else if (itemsToAdd.length > 0) {
+                            qbxmlData = qbwcService.generateAllItemsQBXML(itemsToAdd);
+                            session.currentRequest = 'item_add';
+                        }
+
+                        console.log('QBWC: Generated QBXML for item sync');
+                    }
                 } else {
                     console.log('QBWC: No unsynced items found');
 
@@ -1181,23 +1337,52 @@ app.post('/qbwc', express.text({ type: '*/*' }), async (req, res) => {
             qbxmlData = '';
         }
 
+        // IMPORTANT: QBXML must be XML-escaped when embedded in SOAP response
+        // Do NOT remove XML declaration - keep the full QBXML as-is
+        // Then escape it for embedding in the SOAP envelope
+
+        function escapeXml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&apos;');
+        }
+
+        const escapedQBXML = escapeXml(qbxmlData);
+
+        // Log the QBXML being sent for debugging
+        console.log('QBWC: Sending QBXML (first 500 chars):', qbxmlData ? qbxmlData.substring(0, 500) : '(empty)');
+        console.log('QBWC: Escaped QBXML (first 200 chars):', escapedQBXML ? escapedQBXML.substring(0, 200) : '(empty)');
+
         responseXML = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
     <soap:Body>
         <sendRequestXMLResponse xmlns="http://developer.intuit.com/">
-            <sendRequestXMLResult>${qbxmlData}</sendRequestXMLResult>
+            <sendRequestXMLResult>${escapedQBXML}</sendRequestXMLResult>
         </sendRequestXMLResponse>
     </soap:Body>
 </soap:Envelope>`;
     }
     else if (soapRequest.includes('receiveResponseXML')) {
         const ticketMatch = soapRequest.match(/<ticket[^>]*>([^<]+)<\/ticket>/);
-        const responseMatch = soapRequest.match(/<response[^>]*>([^<]+)<\/response>/);
+        // Use [\s\S]* to match any character including newlines between response tags
+        const responseMatch = soapRequest.match(/<response[^>]*>([\s\S]*?)<\/response>/);
         const hresultMatch = soapRequest.match(/<hresult[^>]*>([^<]+)<\/hresult>/);
         const messageMatch = soapRequest.match(/<message[^>]*>([^<]+)<\/message>/);
 
         const ticket = ticketMatch ? ticketMatch[1] : '';
-        const response = responseMatch ? responseMatch[1] : '';
+        // Unescape HTML entities in response (QBWC sends XML as HTML-escaped)
+        let response = responseMatch ? responseMatch[1] : '';
+        response = response
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'")
+            .replace(/&amp;/g, '&');
+
         const hresult = hresultMatch ? hresultMatch[1] : '';
         const message = messageMatch ? messageMatch[1] : '';
 
@@ -1207,7 +1392,8 @@ app.post('/qbwc', express.text({ type: '*/*' }), async (req, res) => {
         const session = qbwcService.getSession(ticket);
 
         // Process the response
-        if (hresult === '0') {
+        // In QBWC, empty hresult means success, non-empty means error
+        if (!hresult || hresult === '' || hresult === '0') {
             console.log('QBWC operation completed successfully');
 
             try {
@@ -1227,7 +1413,88 @@ app.post('/qbwc', express.text({ type: '*/*' }), async (req, res) => {
                     // Clear session data
                     session.currentRequest = null;
                 }
-                // Handle item sync completion
+                // Handle customer sync completion
+                else if (session && session.currentRequest === 'customers') {
+                    console.log('QBWC: Processing CustomerQueryRs response');
+
+                    // Parse and store customers in database
+                    const result = await qbwcService.parseCustomerQueryResponse(response);
+
+                    if (result.success) {
+                        console.log(`QBWC: Successfully stored ${result.count} customers from QuickBooks`);
+                    } else {
+                        console.error('QBWC: Error parsing CustomerQueryRs:', result.error);
+                    }
+
+                    // Clear session data
+                    session.currentRequest = null;
+                }
+                // Handle item query completion
+                else if (session && session.currentRequest === 'item_query') {
+                    console.log('QBWC: Processing ItemQueryRs response');
+
+                    // Parse and store items in database
+                    const result = await qbwcService.parseItemQueryResponse(response);
+
+                    if (result.success) {
+                        console.log(`QBWC: Successfully stored ${result.count} items from QuickBooks`);
+                    } else {
+                        console.error('QBWC: Error parsing ItemQueryRs:', result.error);
+                    }
+
+                    // Clear session data
+                    session.currentRequest = null;
+                    // Note: On next sendRequestXML, we'll check for unsynced items and decide add vs modify
+                }
+                // Handle item modification completion
+                else if (session && session.currentRequest === 'item_mod') {
+                    console.log('QBWC: Processing ItemModRs response');
+
+                    const result = await qbwcService.parseItemModResponse(response);
+
+                    if (result.success) {
+                        console.log(`QBWC: Successfully updated items: ${result.successCount} success, ${result.errorCount} errors`);
+                    } else {
+                        console.error('QBWC: Error parsing ItemModRs:', result.error);
+                    }
+
+                    // Check if we have pending adds
+                    if (session.pendingAdds && session.pendingAdds.length > 0) {
+                        console.log(`QBWC: ${session.pendingAdds.length} items still need to be added`);
+                        // These will be processed on next sendRequestXML
+                        session.currentRequest = null;
+                    } else if (session.pendingItemIds) {
+                        // All items processed, mark as synced
+                        const itemSyncService = new ItemSyncService(db);
+                        await itemSyncService.markItemsSynced(session.pendingItemIds);
+                        console.log('QBWC: Modified items marked as synced');
+                        session.pendingItemIds = null;
+                        session.currentRequest = null;
+                    }
+                }
+                // Handle item addition completion
+                else if (session && session.currentRequest === 'item_add' && session.pendingItemIds) {
+                    const itemSyncService = new ItemSyncService(db);
+
+                    // Parse response to extract ListIDs
+                    const listIds = [];
+                    const listIdMatches = response.matchAll(/<ListID>([^<]+)<\/ListID>/g);
+                    for (const match of listIdMatches) {
+                        listIds.push(match[1]);
+                    }
+
+                    console.log(`QBWC: Marking ${session.pendingItemIds.length} new items as synced with ${listIds.length} ListIDs`);
+
+                    // Mark items as synced
+                    await itemSyncService.markItemsSynced(session.pendingItemIds, listIds);
+
+                    console.log('QBWC: New items marked as synced successfully');
+
+                    // Clear session data
+                    session.pendingItemIds = null;
+                    session.currentRequest = null;
+                }
+                // Handle old item sync completion (legacy)
                 else if (session && session.currentRequest === 'items' && session.pendingItemIds) {
                     const itemSyncService = new ItemSyncService(db);
 
@@ -1508,6 +1775,24 @@ app.post('/api/stripe/import/customers', async (req, res) => {
     try {
         const stripeAPI = new StripeAPI(db);
         const result = await stripeAPI.importCustomers();
+
+        // Automatically run auto-mapping after successful import
+        if (result.success) {
+            console.log('✓ Stripe customers imported successfully, running auto-match...');
+            try {
+                await performLegacyAutomatch(null, stripeAPI, db, 0.85);
+                console.log('✓ Auto-match completed');
+            } catch (autoMatchError) {
+                console.error('Warning: Auto-match failed after import:', autoMatchError);
+                // Don't fail the import if auto-match fails
+            }
+
+            // Trigger AI mapping suggestions in background
+            if (aiTriggers && aiTriggers.autoTriggerCustomerSuggestions) {
+                setImmediate(() => aiTriggers.autoTriggerCustomerSuggestions());
+            }
+        }
+
         res.json(result);
     } catch (error) {
         console.error('Error importing Stripe customers:', error);
@@ -1520,6 +1805,12 @@ app.post('/api/stripe/import/transactions', async (req, res) => {
         const stripeAPI = new StripeAPI(db);
         const importAll = req.query.all === 'true';
         const result = await stripeAPI.importTransactions(null, importAll);
+
+        // Trigger AI transaction mapping suggestions in background
+        if (result.success && aiTriggers && aiTriggers.autoTriggerTransactionSuggestions) {
+            setImmediate(() => aiTriggers.autoTriggerTransactionSuggestions());
+        }
+
         res.json(result);
     } catch (error) {
         console.error('Error importing Stripe transactions:', error);
@@ -1650,6 +1941,20 @@ app.post('/api/halopsa/import/clients', async (req, res) => {
         // Wait for initialization to complete
         await new Promise(resolve => setTimeout(resolve, 100));
         const result = await halopsaAPI.importClients();
+
+        // Automatically run auto-mapping after successful import
+        if (result.success) {
+            console.log('✓ HaloPSA clients imported successfully, running auto-match...');
+            try {
+                const stripeAPI = new StripeAPI(db);
+                await performLegacyAutomatch(null, stripeAPI, db, 0.85);
+                console.log('✓ Auto-match completed');
+            } catch (autoMatchError) {
+                console.error('Warning: Auto-match failed after import:', autoMatchError);
+                // Don't fail the import if auto-match fails
+            }
+        }
+
         res.json(result);
     } catch (error) {
         console.error('Error importing HaloPSA clients:', error);
@@ -1850,6 +2155,335 @@ app.post('/api/items/sync-to-qb', async (req, res) => {
 });
 
 /**
+ * POST /api/qbd/sync/purchase-orders
+ * Queue purchase orders for QuickBooks sync as Bills
+ * Integrates with account mappings for proper GL account assignment
+ */
+app.post('/api/qbd/sync/purchase-orders', async (req, res) => {
+    try {
+        // Fetch unsynced purchase orders
+        const purchaseOrders = await db.all(`
+            SELECT * FROM halopsa_purchase_orders
+            WHERE synced_to_qb = 0 OR synced_to_qb IS NULL
+            ORDER BY po_date DESC
+        `);
+
+        if (purchaseOrders.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No purchase orders to sync',
+                qbxml: null,
+                poCount: 0
+            });
+        }
+
+        // Fetch account mappings
+        const accountMappings = {};
+        const mappings = await db.all('SELECT mapping_type, qb_account_name FROM account_mappings WHERE is_active = 1');
+        mappings.forEach(m => {
+            accountMappings[m.mapping_type] = m.qb_account_name;
+        });
+
+        // Generate QBXML for purchase orders → bills
+        const qbxml = qbwcService.generatePurchaseOrderBillsQBXML(purchaseOrders, accountMappings);
+
+        if (!qbxml) {
+            return res.json({
+                success: false,
+                message: 'Failed to generate QBXML for purchase orders',
+                poCount: purchaseOrders.length
+            });
+        }
+
+        // Queue the sync request in QBWC service
+        qbwcService.queueSyncRequest('purchase_orders', 50);
+
+        console.log(`Generated QBXML for ${purchaseOrders.length} purchase orders as bills`);
+
+        res.json({
+            success: true,
+            message: `Queued ${purchaseOrders.length} purchase orders for QB sync. Use QuickBooks Web Connector to complete the sync.`,
+            qbxml,
+            poCount: purchaseOrders.length,
+            totalAmount: purchaseOrders.reduce((sum, po) => sum + (po.total_amount || 0), 0)
+        });
+    } catch (error) {
+        console.error('Error preparing purchase orders for QB sync:', error);
+        res.status(500).json({
+            success: false,
+            message: `Error preparing purchase orders for QB sync: ${error.message}`
+        });
+    }
+});
+
+/**
+ * POST /api/qbd/sync/items
+ * Queue items for QuickBooks sync with account mapping integration
+ * Supports inventory, service, and non-inventory items
+ */
+app.post('/api/qbd/sync/items', async (req, res) => {
+    try {
+        // Fetch unsynced items
+        const items = await db.all(`
+            SELECT * FROM qb_items
+            WHERE synced_to_qb = 0 OR synced_to_qb IS NULL
+            ORDER BY item_type, name
+        `);
+
+        if (items.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No items to sync',
+                qbxml: null,
+                itemCount: 0
+            });
+        }
+
+        // Fetch account mappings
+        const accountMappings = {};
+        const mappings = await db.all('SELECT mapping_type, qb_account_name FROM account_mappings WHERE is_active = 1');
+        mappings.forEach(m => {
+            accountMappings[m.mapping_type] = m.qb_account_name;
+        });
+
+        // Generate QBXML for items with account mappings
+        const qbxml = qbwcService.generateItemsWithMappingsQBXML(items, accountMappings);
+
+        if (!qbxml) {
+            return res.json({
+                success: false,
+                message: 'Failed to generate QBXML for items',
+                itemCount: items.length
+            });
+        }
+
+        // Queue the sync request in QBWC service
+        qbwcService.queueSyncRequest('items', 40);
+
+        console.log(`Generated QBXML for ${items.length} items with account mappings`);
+
+        res.json({
+            success: true,
+            message: `Queued ${items.length} items for QB sync. Use QuickBooks Web Connector to complete the sync.`,
+            qbxml,
+            itemCount: items.length,
+            itemTypes: {
+                service: items.filter(i => i.item_type === 'ItemService').length,
+                inventory: items.filter(i => i.item_type === 'ItemInventory').length,
+                nonInventory: items.filter(i => i.item_type === 'ItemNonInventory').length
+            }
+        });
+    } catch (error) {
+        console.error('Error preparing items for QB sync:', error);
+        res.status(500).json({
+            success: false,
+            message: `Error preparing items for QB sync: ${error.message}`
+        });
+    }
+});
+
+/**
+ * POST /api/qbd/sync/bills
+ * Convert unsynced purchase orders to QuickBooks bills
+ * This is an alias for /api/qbd/sync/purchase-orders for clarity
+ */
+app.post('/api/qbd/sync/bills', async (req, res) => {
+    // Redirect to purchase-orders endpoint
+    req.url = '/api/qbd/sync/purchase-orders';
+    app.handle(req, res);
+});
+
+/**
+ * GET /api/qbd/purchase-orders/sync-status
+ * Get Purchase Order sync statistics: total, synced, pending, errors
+ */
+app.get('/api/qbd/purchase-orders/sync-status', async (req, res) => {
+    try {
+        // Get total count
+        const totalResult = await db.get('SELECT COUNT(*) as count FROM halopsa_purchase_orders');
+        const total = totalResult?.count || 0;
+
+        // Get synced count
+        const syncedResult = await db.get('SELECT COUNT(*) as count FROM halopsa_purchase_orders WHERE synced_to_qb = 1');
+        const synced = syncedResult?.count || 0;
+
+        // Get pending count (not synced and no errors)
+        const pendingResult = await db.get(`
+            SELECT COUNT(*) as count FROM halopsa_purchase_orders
+            WHERE (synced_to_qb = 0 OR synced_to_qb IS NULL)
+            AND (sync_error IS NULL OR sync_error = '')
+        `);
+        const pending = pendingResult?.count || 0;
+
+        // Get error count
+        const errorResult = await db.get(`
+            SELECT COUNT(*) as count FROM halopsa_purchase_orders
+            WHERE sync_error IS NOT NULL AND sync_error != ''
+        `);
+        const errors = errorResult?.count || 0;
+
+        // Get total amount of unsynced POs
+        const amountResult = await db.get(`
+            SELECT SUM(total_amount) as total FROM halopsa_purchase_orders
+            WHERE synced_to_qb = 0 OR synced_to_qb IS NULL
+        `);
+        const unsyncedAmount = amountResult?.total || 0;
+
+        // Get recent sync activity
+        const recentSync = await db.get(`
+            SELECT MAX(last_sync) as last_sync FROM halopsa_purchase_orders
+            WHERE synced_to_qb = 1
+        `);
+        const lastSuccessfulSync = recentSync?.last_sync || null;
+
+        res.json({
+            success: true,
+            stats: {
+                total,
+                synced,
+                pending,
+                errors,
+                unsyncedAmount,
+                lastSuccessfulSync
+            }
+        });
+    } catch (error) {
+        console.error('Error getting PO sync status:', error);
+        res.status(500).json({
+            success: false,
+            message: `Error getting sync status: ${error.message}`
+        });
+    }
+});
+
+/**
+ * POST /api/qbd/purchase-orders/:id/retry-sync
+ * Retry sync for a specific Purchase Order
+ * Clears sync_error and marks for re-sync
+ */
+app.post('/api/qbd/purchase-orders/:id/retry-sync', async (req, res) => {
+    try {
+        const poId = parseInt(req.params.id);
+
+        if (isNaN(poId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid purchase order ID'
+            });
+        }
+
+        // Check if PO exists
+        const po = await db.get('SELECT * FROM halopsa_purchase_orders WHERE id = ?', [poId]);
+
+        if (!po) {
+            return res.status(404).json({
+                success: false,
+                message: 'Purchase order not found'
+            });
+        }
+
+        // Clear error and mark for re-sync
+        await db.run(`
+            UPDATE halopsa_purchase_orders
+            SET sync_error = NULL,
+                synced_to_qb = 0,
+                qb_txn_id = NULL,
+                last_sync_attempt = NULL
+            WHERE id = ?
+        `, [poId]);
+
+        console.log(`Cleared sync error for PO ${po.po_number}, marked for retry`);
+
+        res.json({
+            success: true,
+            message: `Purchase order ${po.po_number} marked for retry. Use QuickBooks Web Connector to sync.`,
+            po_number: po.po_number
+        });
+    } catch (error) {
+        console.error('Error retrying PO sync:', error);
+        res.status(500).json({
+            success: false,
+            message: `Error retrying sync: ${error.message}`
+        });
+    }
+});
+
+/**
+ * POST /api/qbd/purchase-orders/retry-all-errors
+ * Retry sync for all Purchase Orders with errors
+ * Clears all sync_error values and marks for re-sync
+ */
+app.post('/api/qbd/purchase-orders/retry-all-errors', async (req, res) => {
+    try {
+        // Get count of POs with errors
+        const errorResult = await db.get(`
+            SELECT COUNT(*) as count FROM halopsa_purchase_orders
+            WHERE sync_error IS NOT NULL AND sync_error != ''
+        `);
+        const errorCount = errorResult?.count || 0;
+
+        if (errorCount === 0) {
+            return res.json({
+                success: true,
+                message: 'No purchase orders with errors to retry',
+                retryCount: 0
+            });
+        }
+
+        // Clear errors and mark for re-sync
+        await db.run(`
+            UPDATE halopsa_purchase_orders
+            SET sync_error = NULL,
+                synced_to_qb = 0,
+                qb_txn_id = NULL,
+                last_sync_attempt = NULL
+            WHERE sync_error IS NOT NULL AND sync_error != ''
+        `);
+
+        console.log(`Cleared sync errors for ${errorCount} purchase orders, marked for retry`);
+
+        res.json({
+            success: true,
+            message: `Cleared errors for ${errorCount} purchase orders. Use QuickBooks Web Connector to sync.`,
+            retryCount: errorCount
+        });
+    } catch (error) {
+        console.error('Error retrying all PO errors:', error);
+        res.status(500).json({
+            success: false,
+            message: `Error retrying all errors: ${error.message}`
+        });
+    }
+});
+
+/**
+ * GET /api/qbd/purchase-orders/errors
+ * Get all Purchase Orders with sync errors
+ */
+app.get('/api/qbd/purchase-orders/errors', async (req, res) => {
+    try {
+        const errorPOs = await db.all(`
+            SELECT id, po_number, vendor_name, total_amount, sync_error, last_sync_attempt
+            FROM halopsa_purchase_orders
+            WHERE sync_error IS NOT NULL AND sync_error != ''
+            ORDER BY last_sync_attempt DESC
+        `);
+
+        res.json({
+            success: true,
+            errors: errorPOs,
+            count: errorPOs.length
+        });
+    } catch (error) {
+        console.error('Error getting PO errors:', error);
+        res.status(500).json({
+            success: false,
+            message: `Error getting errors: ${error.message}`
+        });
+    }
+});
+
+/**
  * GET /api/items/all
  * Get all items from the database with pagination support
  */
@@ -1879,6 +2513,34 @@ app.get('/api/customers/all', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 10000; // Default to large number
         const offset = parseInt(req.query.offset) || 0;
+        const filter = req.query.filter || 'all';
+
+        // Build WHERE clause based on filter
+        let whereClause = '';
+        switch (filter) {
+            case 'unmapped-stripe':
+                whereClause = 'WHERE cm.stripe_customer_id IS NULL';
+                break;
+            case 'mapped-stripe':
+                whereClause = 'WHERE cm.stripe_customer_id IS NOT NULL';
+                break;
+            case 'unmapped-qb':
+                whereClause = 'WHERE cm.qb_customer_id IS NULL';
+                break;
+            case 'mapped-qb':
+                whereClause = 'WHERE cm.qb_customer_id IS NOT NULL';
+                break;
+            case 'fully-unmapped':
+                whereClause = 'WHERE cm.stripe_customer_id IS NULL AND cm.qb_customer_id IS NULL';
+                break;
+            case 'fully-mapped':
+                whereClause = 'WHERE cm.stripe_customer_id IS NOT NULL AND cm.qb_customer_id IS NOT NULL';
+                break;
+            case 'all':
+            default:
+                whereClause = '';
+                break;
+        }
 
         const clients = await db.all(`
             SELECT
@@ -1887,11 +2549,13 @@ app.get('/api/customers/all', async (req, res) => {
                 cm.stripe_customer_name,
                 cm.stripe_customer_email,
                 cm.qb_customer_id,
-                cm.qb_customer_name,
+                COALESCE(qb.qb_full_name, qb.company_name, cm.qb_customer_name) as qb_customer_name,
                 cm.auto_mapped,
                 cm.mapping_confirmed
             FROM halopsa_clients hc
             LEFT JOIN customer_mappings cm ON hc.halopsa_id = cm.halopsa_client_id
+            LEFT JOIN qb_customers qb ON cm.qb_customer_id = qb.qb_list_id
+            ${whereClause}
             ORDER BY hc.name
             LIMIT ? OFFSET ?
         `, [limit, offset]);
@@ -2251,15 +2915,24 @@ app.get('/api/stripe/transactions', async (req, res) => {
 
 app.get('/api/stripe/customers', async (req, res) => {
     try {
-        const stripeAPI = new StripeAPI(db);
-        // Use imported customers from local database instead of direct Stripe API calls
-        let customers = await stripeAPI.getImportedCustomers();
-        
+        // Fetch Stripe customers with mapping information
+        const customers = await db.all(`
+            SELECT
+                sc.*,
+                cm.id as mapping_id,
+                cm.halopsa_client_id,
+                cm.halopsa_client_name,
+                cm.mapping_confirmed
+            FROM stripe_customers sc
+            LEFT JOIN customer_mappings cm ON sc.stripe_id = cm.stripe_customer_id
+            ORDER BY sc.name, sc.email
+        `);
+
         console.log(`[DEBUG] Fetched ${customers.length} customers from database`);
         if (customers.length > 0) {
             console.log(`[DEBUG] First customer: ${customers[0].name} (${customers[0].email})`);
         }
-        
+
         // Transform the data structure to match what the frontend expects
         const transformedCustomers = customers.map(customer => ({
             id: customer.stripe_id,  // Use stripe_id as the identifier for the frontend
@@ -2267,9 +2940,13 @@ app.get('/api/stripe/customers', async (req, res) => {
             name: customer.name,
             email: customer.email,
             phone: customer.phone,
-            description: customer.description
+            description: customer.description,
+            mapping_id: customer.mapping_id,
+            halopsa_client_id: customer.halopsa_client_id,
+            halopsa_client_name: customer.halopsa_client_name,
+            mapping_confirmed: customer.mapping_confirmed
         }));
-        
+
         res.json(transformedCustomers);
     } catch (error) {
         console.error('Error fetching Stripe customers:', error);
@@ -2342,13 +3019,63 @@ app.post('/api/customers/map', async (req, res) => {
     }
 });
 
-app.get('/api/customers/mappings', async (req, res) => {
+// Customer mappings endpoint is at line 3315+ with full JOIN support and pagination
+
+// Alias endpoint for drag-drop interface - creates customer mapping
+app.post('/api/customers/mappings/create', async (req, res) => {
     try {
-        const mappings = await db.all('SELECT * FROM customer_mappings ORDER BY updated_at DESC');
-        res.json(mappings);
+        const { stripe_customer_id, stripe_customer_name, stripe_customer_email, halopsa_client_id, halopsa_client_name } = req.body;
+
+        if (!stripe_customer_id || !halopsa_client_id) {
+            return res.status(400).json({ error: 'stripe_customer_id and halopsa_client_id are required' });
+        }
+
+        // Check if stripe customer is already mapped
+        const existingMapping = await db.get(
+            'SELECT * FROM customer_mappings WHERE stripe_customer_id = ? AND mapping_confirmed = 1',
+            [stripe_customer_id]
+        );
+
+        if (existingMapping) {
+            // Update existing mapping instead of error
+            await db.run(
+                `UPDATE customer_mappings
+                 SET halopsa_client_id = ?, halopsa_client_name = ?,
+                     stripe_customer_name = ?, stripe_customer_email = ?,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE stripe_customer_id = ?`,
+                [
+                    Math.floor(Number(halopsa_client_id)),
+                    halopsa_client_name,
+                    stripe_customer_name,
+                    stripe_customer_email,
+                    stripe_customer_id
+                ]
+            );
+            return res.json({ success: true, message: 'Customer mapping updated' });
+        }
+
+        // Create new mapping
+        const halopsaClientIdNum = Math.floor(Number(halopsa_client_id));
+
+        await db.run(
+            `INSERT INTO customer_mappings
+             (stripe_customer_id, stripe_customer_email, stripe_customer_name,
+              halopsa_client_id, halopsa_client_name, auto_mapped, mapping_confirmed)
+             VALUES (?, ?, ?, ?, ?, 0, 1)`,
+            [
+                stripe_customer_id,
+                stripe_customer_email || '',
+                stripe_customer_name || '',
+                halopsaClientIdNum,
+                halopsa_client_name || '',
+            ]
+        );
+
+        res.json({ success: true, message: 'Customer mapping created' });
     } catch (error) {
-        console.error('Error fetching customer mappings:', error);
-        res.status(500).json({ error: 'Failed to fetch mappings' });
+        console.error('Error creating customer mapping:', error);
+        res.status(500).json({ error: 'Failed to create mapping: ' + error.message });
     }
 });
 
@@ -3050,27 +3777,38 @@ app.post('/api/customers/mappings/save', async (req, res) => {
 // Get existing customer mappings
 app.get('/api/customers/mappings', async (req, res) => {
     try {
-        const { include_unconfirmed = false } = req.query;
-        
+        const { include_unconfirmed = false, limit = null, offset = 0 } = req.query;
+
         let query = `
-            SELECT cm.*, 
+            SELECT cm.*,
                    sc.email as stripe_email, sc.name as stripe_name,
                    hc.name as halo_name, hc.email as halo_email
             FROM customer_mappings cm
             LEFT JOIN stripe_customers sc ON cm.stripe_customer_id = sc.stripe_id
             LEFT JOIN halopsa_clients hc ON cm.halopsa_client_id = hc.halopsa_id
         `;
-        
+
         if (!include_unconfirmed) {
             query += ' WHERE cm.mapping_confirmed = 1';
         }
-        
+
         query += ' ORDER BY cm.updated_at DESC, cm.created_at DESC';
-        
+
+        // Add pagination if limit is specified
+        if (limit !== null && limit !== undefined) {
+            query += ` LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
+        }
+
         const mappings = await db.all(query);
-        
-        res.json({ success: true, mappings: mappings });
-        
+
+        // If pagination is used, return array directly for InfiniteScroll compatibility
+        if (limit !== null && limit !== undefined) {
+            res.json(mappings);
+        } else {
+            // Legacy response format for backward compatibility
+            res.json({ success: true, mappings: mappings });
+        }
+
     } catch (error) {
         console.error('Error fetching customer mappings:', error);
         res.status(500).json({ error: 'Failed to fetch customer mappings' });
@@ -3081,17 +3819,283 @@ app.get('/api/customers/mappings', async (req, res) => {
 app.delete('/api/customers/mappings/:stripe_customer_id', async (req, res) => {
     try {
         const { stripe_customer_id } = req.params;
-        
+
         await db.run(
             'DELETE FROM customer_mappings WHERE stripe_customer_id = ?',
             [stripe_customer_id]
         );
-        
+
         res.json({ success: true, message: 'Mapping deleted successfully' });
-        
+
     } catch (error) {
         console.error('Error deleting customer mapping:', error);
         res.status(500).json({ error: 'Failed to delete customer mapping' });
+    }
+});
+
+// ==================== UNMAP INDIVIDUAL PLATFORM MAPPINGS ====================
+
+// DELETE /api/customers/mappings/stripe/:halopsa_client_id - Remove Stripe mapping
+app.delete('/api/customers/mappings/stripe/:halopsa_client_id', async (req, res) => {
+    try {
+        const halopsa_client_id = Math.floor(Number(req.params.halopsa_client_id));
+
+        if (!halopsa_client_id || isNaN(halopsa_client_id)) {
+            return res.status(400).json({ error: 'Invalid HaloPSA client ID' });
+        }
+
+        // Find the mapping row
+        const mapping = await db.get(
+            'SELECT * FROM customer_mappings WHERE halopsa_client_id = ?',
+            [halopsa_client_id]
+        );
+
+        if (!mapping) {
+            return res.status(404).json({ error: 'No mapping found for this HaloPSA client' });
+        }
+
+        // Check if this mapping has QB data too
+        const hasQBMapping = mapping.qb_customer_id !== null && mapping.qb_customer_id !== '';
+
+        if (hasQBMapping) {
+            // Keep the row but clear Stripe fields
+            console.log(`[UNMAP] Removing Stripe mapping for HaloPSA client ${halopsa_client_id}, keeping QB mapping`);
+            await db.run(
+                `UPDATE customer_mappings
+                 SET stripe_customer_id = NULL,
+                     stripe_customer_name = NULL,
+                     stripe_customer_email = NULL,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE halopsa_client_id = ?`,
+                [halopsa_client_id]
+            );
+        } else {
+            // No QB mapping, delete the entire row
+            console.log(`[UNMAP] Deleting mapping row for HaloPSA client ${halopsa_client_id} (no QB mapping)`);
+            await db.run(
+                'DELETE FROM customer_mappings WHERE halopsa_client_id = ?',
+                [halopsa_client_id]
+            );
+        }
+
+        res.json({ success: true, message: 'Stripe mapping removed' });
+
+    } catch (error) {
+        console.error('Error removing Stripe mapping:', error);
+        res.status(500).json({ error: 'Failed to remove Stripe mapping: ' + error.message });
+    }
+});
+
+// DELETE /api/customers/mappings/qb/:halopsa_client_id - Remove QuickBooks mapping
+app.delete('/api/customers/mappings/qb/:halopsa_client_id', async (req, res) => {
+    try {
+        const halopsa_client_id = Math.floor(Number(req.params.halopsa_client_id));
+
+        if (!halopsa_client_id || isNaN(halopsa_client_id)) {
+            return res.status(400).json({ error: 'Invalid HaloPSA client ID' });
+        }
+
+        // Find the mapping row
+        const mapping = await db.get(
+            'SELECT * FROM customer_mappings WHERE halopsa_client_id = ?',
+            [halopsa_client_id]
+        );
+
+        if (!mapping) {
+            return res.status(404).json({ error: 'No mapping found for this HaloPSA client' });
+        }
+
+        // Check if this mapping has Stripe data too
+        const hasStripeMapping = mapping.stripe_customer_id !== null && mapping.stripe_customer_id !== '';
+
+        if (hasStripeMapping) {
+            // Keep the row but clear QB fields
+            console.log(`[UNMAP] Removing QB mapping for HaloPSA client ${halopsa_client_id}, keeping Stripe mapping`);
+            await db.run(
+                `UPDATE customer_mappings
+                 SET qb_customer_id = NULL,
+                     qb_customer_name = NULL,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE halopsa_client_id = ?`,
+                [halopsa_client_id]
+            );
+        } else {
+            // No Stripe mapping, delete the entire row
+            console.log(`[UNMAP] Deleting mapping row for HaloPSA client ${halopsa_client_id} (no Stripe mapping)`);
+            await db.run(
+                'DELETE FROM customer_mappings WHERE halopsa_client_id = ?',
+                [halopsa_client_id]
+            );
+        }
+
+        res.json({ success: true, message: 'QuickBooks mapping removed' });
+
+    } catch (error) {
+        console.error('Error removing QB mapping:', error);
+        res.status(500).json({ error: 'Failed to remove QB mapping: ' + error.message });
+    }
+});
+
+// POST /api/customers/mappings/stripe - Create or update Stripe → HaloPSA mapping
+app.post('/api/customers/mappings/stripe', async (req, res) => {
+    try {
+        const { stripe_customer_id, halopsa_client_id } = req.body;
+
+        if (!stripe_customer_id || !halopsa_client_id) {
+            return res.status(400).json({
+                error: 'stripe_customer_id and halopsa_client_id are required'
+            });
+        }
+
+        const halopsaClientIdNum = Math.floor(Number(halopsa_client_id));
+
+        // Validate that HaloPSA client exists
+        const haloClient = await db.get(
+            'SELECT halopsa_id, name FROM halopsa_clients WHERE halopsa_id = ?',
+            [halopsaClientIdNum]
+        );
+
+        if (!haloClient) {
+            return res.status(404).json({ error: 'HaloPSA client not found' });
+        }
+
+        // Get Stripe customer details
+        const stripeCustomer = await db.get(
+            'SELECT stripe_id, name, email FROM stripe_customers WHERE stripe_id = ?',
+            [stripe_customer_id]
+        );
+
+        if (!stripeCustomer) {
+            return res.status(404).json({ error: 'Stripe customer not found' });
+        }
+
+        // Check if mapping already exists for this HaloPSA client
+        const existingMapping = await db.get(
+            'SELECT * FROM customer_mappings WHERE halopsa_client_id = ?',
+            [halopsaClientIdNum]
+        );
+
+        if (existingMapping) {
+            // Update existing mapping to add Stripe fields
+            console.log(`[MAP] Updating mapping for HaloPSA client ${halopsaClientIdNum} with Stripe customer ${stripe_customer_id}`);
+            await db.run(
+                `UPDATE customer_mappings
+                 SET stripe_customer_id = ?,
+                     stripe_customer_name = ?,
+                     stripe_customer_email = ?,
+                     mapping_confirmed = 0,
+                     auto_mapped = 0,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE halopsa_client_id = ?`,
+                [
+                    stripe_customer_id,
+                    stripeCustomer.name || '',
+                    stripeCustomer.email || '',
+                    halopsaClientIdNum
+                ]
+            );
+        } else {
+            // Create new mapping row
+            console.log(`[MAP] Creating new mapping for HaloPSA client ${halopsaClientIdNum} with Stripe customer ${stripe_customer_id}`);
+            await db.run(
+                `INSERT INTO customer_mappings
+                 (stripe_customer_id, stripe_customer_name, stripe_customer_email,
+                  qb_customer_id, qb_customer_name,
+                  halopsa_client_id, halopsa_client_name,
+                  mapping_confirmed, auto_mapped)
+                 VALUES (?, ?, ?, NULL, NULL, ?, ?, 0, 0)`,
+                [
+                    stripe_customer_id,
+                    stripeCustomer.name || '',
+                    stripeCustomer.email || '',
+                    halopsaClientIdNum,
+                    haloClient.name || ''
+                ]
+            );
+        }
+
+        res.json({ success: true, message: 'Stripe mapping created' });
+
+    } catch (error) {
+        console.error('Error creating Stripe mapping:', error);
+        res.status(500).json({ error: 'Failed to create Stripe mapping: ' + error.message });
+    }
+});
+
+// POST /api/customers/mappings/qb - Create or update QuickBooks → HaloPSA mapping
+app.post('/api/customers/mappings/qb', async (req, res) => {
+    try {
+        const { qb_customer_id, halopsa_client_id } = req.body;
+
+        if (!qb_customer_id || !halopsa_client_id) {
+            return res.status(400).json({
+                error: 'qb_customer_id and halopsa_client_id are required'
+            });
+        }
+
+        const halopsaClientIdNum = Math.floor(Number(halopsa_client_id));
+
+        // Validate that HaloPSA client exists
+        const haloClient = await db.get(
+            'SELECT halopsa_id, name FROM halopsa_clients WHERE halopsa_id = ?',
+            [halopsaClientIdNum]
+        );
+
+        if (!haloClient) {
+            return res.status(404).json({ error: 'HaloPSA client not found' });
+        }
+
+        // For now, we'll use qb_customer_id as the name since we don't have a QB customers table yet
+        // TODO: When QB integration is built, fetch QB customer name from qb_customers table
+        const qb_customer_name = qb_customer_id; // Placeholder until QB integration is complete
+
+        // Check if mapping already exists for this HaloPSA client
+        const existingMapping = await db.get(
+            'SELECT * FROM customer_mappings WHERE halopsa_client_id = ?',
+            [halopsaClientIdNum]
+        );
+
+        if (existingMapping) {
+            // Update existing mapping to add QB fields
+            console.log(`[MAP] Updating mapping for HaloPSA client ${halopsaClientIdNum} with QB customer ${qb_customer_id}`);
+            await db.run(
+                `UPDATE customer_mappings
+                 SET qb_customer_id = ?,
+                     qb_customer_name = ?,
+                     mapping_confirmed = 0,
+                     auto_mapped = 0,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE halopsa_client_id = ?`,
+                [
+                    qb_customer_id,
+                    qb_customer_name,
+                    halopsaClientIdNum
+                ]
+            );
+        } else {
+            // Create new mapping row
+            console.log(`[MAP] Creating new mapping for HaloPSA client ${halopsaClientIdNum} with QB customer ${qb_customer_id}`);
+            await db.run(
+                `INSERT INTO customer_mappings
+                 (stripe_customer_id, stripe_customer_name, stripe_customer_email,
+                  qb_customer_id, qb_customer_name,
+                  halopsa_client_id, halopsa_client_name,
+                  mapping_confirmed, auto_mapped)
+                 VALUES (NULL, NULL, NULL, ?, ?, ?, ?, 0, 0)`,
+                [
+                    qb_customer_id,
+                    qb_customer_name,
+                    halopsaClientIdNum,
+                    haloClient.name || ''
+                ]
+            );
+        }
+
+        res.json({ success: true, message: 'QuickBooks mapping created' });
+
+    } catch (error) {
+        console.error('Error creating QB mapping:', error);
+        res.status(500).json({ error: 'Failed to create QB mapping: ' + error.message });
     }
 });
 
@@ -4146,20 +5150,1200 @@ app.get('/api/qbwc/info', async (req, res) => {
     }
 });
 
-app.get('/qbwc/status', (req, res) => {
-    res.json({
-        status: 'active',
-        server: 'CSV to QuickBooks IIF Sync',
-        version: '1.0.0',
-        qbwc_endpoint: `${req.protocol}://${req.get('host')}/qbwc`,
-        qwc_config: `${req.protocol}://${req.get('host')}/qbwc/config`,
-        test_credentials: {
-            username: 'qbwc_user',
-            password: 'password123'
-        },
-        instructions: 'Make sure QuickBooks 2024 is OPEN before adding this app to QBWC'
-    });
+app.get('/qbwc/status', async (req, res) => {
+    try {
+        // Get credentials from config
+        const qbwcConfig = await db.getConfig('qbwc');
+        const username = (qbwcConfig && qbwcConfig.qbwc_username) ? qbwcConfig.qbwc_username.value : 'qbwc_user';
+        const password = (qbwcConfig && qbwcConfig.qbwc_password) ? qbwcConfig.qbwc_password.value : 'password123';
+
+        res.json({
+            status: 'active',
+            server: 'CSV to QuickBooks IIF Sync',
+            version: '1.0.0',
+            qbwc_endpoint: `${req.protocol}://${req.get('host')}/qbwc`,
+            qwc_config: `${req.protocol}://${req.get('host')}/qbwc/config`,
+            test_credentials: {
+                username: username,
+                password: password
+            },
+            instructions: 'Make sure QuickBooks 2024 is OPEN before adding this app to QBWC'
+        });
+    } catch (error) {
+        console.error('Error getting QBWC status:', error);
+        res.json({
+            status: 'active',
+            server: 'CSV to QuickBooks IIF Sync',
+            version: '1.0.0',
+            qbwc_endpoint: `${req.protocol}://${req.get('host')}/qbwc`,
+            qwc_config: `${req.protocol}://${req.get('host')}/qbwc/config`,
+            test_credentials: {
+                username: 'qbwc_user',
+                password: 'password123'
+            },
+            instructions: 'Make sure QuickBooks 2024 is OPEN before adding this app to QBWC'
+        });
+    }
 });
+
+// ====================================================================
+// TRANSACTION-INVOICE MAPPING ENDPOINTS
+// ====================================================================
+
+// Auto-map all unmapped Stripe transactions to HaloPSA invoices
+app.post('/api/mappings/transactions/auto-map-all', async (req, res) => {
+    try {
+        const transactionMapper = new TransactionMapper(db);
+        const result = await transactionMapper.autoMapAllTransactions();
+        res.json(result);
+    } catch (error) {
+        console.error('Error auto-mapping transactions:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Auto-map a single Stripe transaction to HaloPSA invoices
+app.post('/api/mappings/transactions/auto-map/:id', async (req, res) => {
+    try {
+        const transactionMapper = new TransactionMapper(db);
+        const result = await transactionMapper.autoMapTransaction(parseInt(req.params.id));
+        res.json(result);
+    } catch (error) {
+        console.error('Error auto-mapping transaction:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Manually map a Stripe transaction to HaloPSA invoice(s)
+app.post('/api/mappings/transactions/manual', async (req, res) => {
+    try {
+        const { stripeTransactionId, invoiceIds } = req.body;
+
+        if (!stripeTransactionId || !invoiceIds) {
+            return res.status(400).json({
+                success: false,
+                message: 'stripeTransactionId and invoiceIds are required'
+            });
+        }
+
+        const transactionMapper = new TransactionMapper(db);
+        const result = await transactionMapper.manualMapTransaction(stripeTransactionId, invoiceIds);
+        res.json(result);
+    } catch (error) {
+        console.error('Error manually mapping transaction:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Get all unmapped Stripe transactions
+app.get('/api/mappings/transactions/unmapped', async (req, res) => {
+    try {
+        const transactionMapper = new TransactionMapper(db);
+        const unmapped = await transactionMapper.getUnmappedTransactions();
+        res.json({ success: true, transactions: unmapped });
+    } catch (error) {
+        console.error('Error getting unmapped transactions:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ====================================================================
+// CLIENT MAPPING ENDPOINTS (Three-way: Stripe-HaloPSA-QuickBooks)
+// ====================================================================
+
+// Auto-map Stripe customers to HaloPSA clients
+app.post('/api/mappings/clients/stripe-halopsa', async (req, res) => {
+    try {
+        const { threshold } = req.body;
+        const clientMapper = new ClientMapper(db);
+        const result = await clientMapper.autoMapStripeToHaloPSA(threshold);
+        res.json(result);
+    } catch (error) {
+        console.error('Error auto-mapping Stripe to HaloPSA:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Auto-map HaloPSA clients to QuickBooks customers
+app.post('/api/mappings/clients/halopsa-quickbooks', async (req, res) => {
+    try {
+        const { threshold } = req.body;
+        const clientMapper = new ClientMapper(db);
+        const result = await clientMapper.autoMapHaloPSAToQuickBooks(threshold);
+        res.json(result);
+    } catch (error) {
+        console.error('Error auto-mapping HaloPSA to QuickBooks:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Manually map a customer across all three systems
+app.post('/api/mappings/clients/manual', async (req, res) => {
+    try {
+        const { stripe_id, halopsa_id, qb_id } = req.body;
+
+        if (!stripe_id && !halopsa_id && !qb_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'At least one ID (stripe_id, halopsa_id, or qb_id) is required'
+            });
+        }
+
+        const clientMapper = new ClientMapper(db);
+        const result = await clientMapper.manualMapCustomer({ stripe_id, halopsa_id, qb_id });
+        res.json(result);
+    } catch (error) {
+        console.error('Error manually mapping customer:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Get all customer mappings
+app.get('/api/mappings/clients/all', async (req, res) => {
+    try {
+        const clientMapper = new ClientMapper(db);
+        const mappings = await clientMapper.getAllMappings();
+        res.json({ success: true, mappings: mappings });
+    } catch (error) {
+        console.error('Error getting all mappings:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Get unmapped customers by source
+app.get('/api/mappings/clients/unmapped/:source', async (req, res) => {
+    try {
+        const { source } = req.params;
+
+        if (!['stripe', 'halopsa', 'quickbooks'].includes(source)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Source must be one of: stripe, halopsa, quickbooks'
+            });
+        }
+
+        const clientMapper = new ClientMapper(db);
+        const unmapped = await clientMapper.getUnmappedCustomers(source);
+        res.json({ success: true, source: source, unmapped: unmapped });
+    } catch (error) {
+        console.error('Error getting unmapped customers:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ====================================================================
+// DEPOSIT & TRANSACTION TYPE ENDPOINTS
+// ====================================================================
+
+// Get deposit summary
+app.get('/api/deposits/summary', async (req, res) => {
+    try {
+        const transactionMapper = new TransactionMapper(db);
+        const summary = await transactionMapper.getDepositSummary();
+        res.json(summary);
+    } catch (error) {
+        console.error('Error getting deposit summary:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Get transactions by type (deposit, payment, final_payment)
+app.get('/api/transactions/by-type/:type', async (req, res) => {
+    try {
+        const { type } = req.params;
+
+        if (!['deposit', 'payment', 'final_payment'].includes(type)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Type must be one of: deposit, payment, final_payment'
+            });
+        }
+
+        const transactionMapper = new TransactionMapper(db);
+        const transactions = await transactionMapper.getTransactionsByType(type);
+        res.json({ success: true, type: type, count: transactions.length, transactions: transactions });
+    } catch (error) {
+        console.error(`Error getting ${req.params.type} transactions:`, error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Reclassify all transactions (useful after updating detection logic)
+app.post('/api/transactions/reclassify-all', async (req, res) => {
+    try {
+        const transactionMapper = new TransactionMapper(db);
+
+        // Get all transactions
+        const allTransactions = await db.query('SELECT id, description FROM stripe_transactions');
+
+        let reclassifiedCount = 0;
+        const reclassificationResults = {
+            deposit: 0,
+            payment: 0,
+            final_payment: 0
+        };
+
+        for (const transaction of allTransactions) {
+            const type = transactionMapper.detectTransactionType(transaction.description);
+
+            // Update the transaction type
+            await db.run(
+                'UPDATE stripe_transactions SET transaction_type = ? WHERE id = ?',
+                [type, transaction.id]
+            );
+
+            reclassifiedCount++;
+            reclassificationResults[type]++;
+        }
+
+        res.json({
+            success: true,
+            message: `Reclassified ${reclassifiedCount} transactions`,
+            total: reclassifiedCount,
+            breakdown: reclassificationResults
+        });
+    } catch (error) {
+        console.error('Error reclassifying transactions:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ====================================================================
+// TRANSACTION-INVOICE MAPPING ENDPOINTS
+// ====================================================================
+
+// GET /api/transaction-mappings/stripe - Get unmapped Stripe transactions
+app.get('/api/transaction-mappings/stripe', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = parseInt(req.query.offset) || 0;
+
+        const transactions = db.query(`
+            SELECT
+                st.*,
+                sc.name as customer_name,
+                sc.email as customer_email,
+                tim.id as mapping_id,
+                hi.invoice_number,
+                CASE WHEN tim.id IS NOT NULL THEN 1 ELSE 0 END as mapped
+            FROM stripe_transactions st
+            LEFT JOIN stripe_customers sc ON st.customer_id = sc.stripe_id
+            LEFT JOIN transaction_invoice_mappings tim ON st.id = tim.stripe_transaction_id
+            LEFT JOIN halopsa_invoices hi ON tim.halopsa_invoice_id = hi.id
+            WHERE tim.id IS NULL
+            ORDER BY st.created DESC
+            LIMIT ? OFFSET ?
+        `, [limit, offset]);
+
+        res.json({
+            success: true,
+            transactions: transactions || [],
+            count: transactions?.length || 0
+        });
+    } catch (error) {
+        console.error('Error fetching Stripe transactions:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// GET /api/transaction-mappings/invoices - Get HaloPSA invoices with mapping info
+app.get('/api/transaction-mappings/invoices', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = parseInt(req.query.offset) || 0;
+
+        const invoices = db.query(`
+            SELECT
+                hi.*,
+                COUNT(tim.id) as mapped_transaction_count
+            FROM halopsa_invoices hi
+            LEFT JOIN transaction_invoice_mappings tim ON hi.id = tim.halopsa_invoice_id
+            GROUP BY hi.id
+            ORDER BY hi.invoice_date DESC
+            LIMIT ? OFFSET ?
+        `, [limit, offset]);
+
+        res.json({
+            success: true,
+            invoices: invoices || [],
+            count: invoices?.length || 0
+        });
+    } catch (error) {
+        console.error('Error fetching HaloPSA invoices:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// GET /api/transaction-mappings - Get mapped transaction-invoice pairs
+app.get('/api/transaction-mappings', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = parseInt(req.query.offset) || 0;
+
+        const mappings = db.query(`
+            SELECT
+                tim.*,
+                st.stripe_id,
+                st.amount as transaction_amount,
+                st.currency as transaction_currency,
+                st.description as transaction_description,
+                st.created as transaction_date,
+                hi.invoice_number,
+                hi.client_name,
+                hi.invoice_date
+            FROM transaction_invoice_mappings tim
+            JOIN stripe_transactions st ON tim.stripe_transaction_id = st.id
+            JOIN halopsa_invoices hi ON tim.halopsa_invoice_id = hi.id
+            ORDER BY tim.created_at DESC
+            LIMIT ? OFFSET ?
+        `, [limit, offset]);
+
+        res.json({
+            success: true,
+            mappings: mappings || [],
+            count: mappings?.length || 0
+        });
+    } catch (error) {
+        console.error('Error fetching transaction mappings:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// POST /api/transaction-mappings - Create a transaction-invoice mapping
+app.post('/api/transaction-mappings', async (req, res) => {
+    try {
+        const { stripe_transaction_id, halopsa_invoice_id, invoice_amount } = req.body;
+
+        if (!stripe_transaction_id || !halopsa_invoice_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'stripe_transaction_id and halopsa_invoice_id are required'
+            });
+        }
+
+        // Check if mapping already exists
+        const existing = db.get(`
+            SELECT * FROM transaction_invoice_mappings
+            WHERE stripe_transaction_id = ? AND halopsa_invoice_id = ?
+        `, [stripe_transaction_id, halopsa_invoice_id]);
+
+        if (existing) {
+            return res.status(409).json({
+                success: false,
+                message: 'Mapping already exists'
+            });
+        }
+
+        // Create the mapping
+        const result = db.run(`
+            INSERT INTO transaction_invoice_mappings
+            (stripe_transaction_id, halopsa_invoice_id, invoice_amount, auto_mapped, mapping_confidence, created_at, updated_at)
+            VALUES (?, ?, ?, 0, 1.0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `, [stripe_transaction_id, halopsa_invoice_id, invoice_amount]);
+
+        res.json({
+            success: true,
+            message: 'Mapping created successfully',
+            mapping_id: result.lastInsertRowid
+        });
+    } catch (error) {
+        console.error('Error creating transaction mapping:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// DELETE /api/transaction-mappings/:id - Delete a transaction-invoice mapping
+app.delete('/api/transaction-mappings/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const result = db.run(`
+            DELETE FROM transaction_invoice_mappings
+            WHERE id = ?
+        `, [id]);
+
+        if (result.changes === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Mapping not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Mapping deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting transaction mapping:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// POST /api/transaction-mappings/auto-match - Auto-match transactions to invoices
+app.post('/api/transaction-mappings/auto-match', async (req, res) => {
+    try {
+        // Get all unmapped Stripe transactions
+        const transactions = db.query(`
+            SELECT st.*, sc.name as customer_name, sc.email as customer_email
+            FROM stripe_transactions st
+            LEFT JOIN stripe_customers sc ON st.customer_id = sc.stripe_id
+            LEFT JOIN transaction_invoice_mappings tim ON st.id = tim.stripe_transaction_id
+            WHERE tim.id IS NULL
+        `);
+
+        // Get all HaloPSA invoices
+        const invoices = db.query(`
+            SELECT * FROM halopsa_invoices
+        `);
+
+        const matches = [];
+
+        // Auto-matching algorithm
+        for (const tx of transactions) {
+            const description = (tx.description || '').toLowerCase();
+
+            // Extract invoice number patterns from description
+            const patterns = [
+                /invoice\s*#?\s*([A-Z0-9-]+)/i,
+                /inv\s*#?\s*([A-Z0-9-]+)/i,
+                /#\s*([A-Z0-9-]+)/i,
+                /\b([A-Z]{2,5}-\d{3,})\b/i
+            ];
+
+            let extractedInvoiceNum = null;
+            for (const pattern of patterns) {
+                const match = description.match(pattern);
+                if (match && match[1]) {
+                    extractedInvoiceNum = match[1].toUpperCase();
+                    break;
+                }
+            }
+
+            if (!extractedInvoiceNum) continue;
+
+            // Find matching invoice
+            const matchingInvoice = invoices.find(inv => {
+                const invNumber = (inv.invoice_number || '').toUpperCase();
+                return invNumber === extractedInvoiceNum || invNumber.includes(extractedInvoiceNum);
+            });
+
+            if (matchingInvoice) {
+                // Calculate confidence based on amount match
+                const txAmount = tx.amount / 100; // Convert from cents
+                const invAmount = matchingInvoice.total_amount;
+                const amountDiff = Math.abs(txAmount - invAmount);
+                const amountConfidence = amountDiff < 0.01 ? 1.0 : (amountDiff < 10 ? 0.9 : 0.7);
+
+                // Create the mapping
+                try {
+                    db.run(`
+                        INSERT INTO transaction_invoice_mappings
+                        (stripe_transaction_id, halopsa_invoice_id, invoice_amount, auto_mapped, mapping_confidence, created_at, updated_at)
+                        VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    `, [tx.id, matchingInvoice.id, matchingInvoice.total_amount, amountConfidence]);
+
+                    matches.push({
+                        transaction_id: tx.stripe_id,
+                        invoice_number: matchingInvoice.invoice_number,
+                        confidence: amountConfidence
+                    });
+                } catch (err) {
+                    console.error('Error creating auto-match mapping:', err);
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `Auto-matched ${matches.length} transactions`,
+            matches: matches,
+            count: matches.length
+        });
+    } catch (error) {
+        console.error('Error auto-matching transactions:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ====================================================================
+// AI-POWERED TRANSACTION MAPPING ENDPOINTS
+// ====================================================================
+
+// POST /api/ai/suggest-transaction-mappings - Generate AI-powered transaction-invoice mapping suggestions
+app.post('/api/ai/suggest-transaction-mappings', async (req, res) => {
+    try {
+        console.log('Generating AI-powered transaction mapping suggestions...');
+        const result = await aiService.suggestTransactionMappings();
+
+        res.json({
+            success: result.success,
+            count: result.count,
+            suggestions: result.suggestions,
+            message: result.message || `Generated ${result.count} AI mapping suggestions`
+        });
+    } catch (error) {
+        console.error('Error generating AI transaction mapping suggestions:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message,
+            count: 0,
+            suggestions: []
+        });
+    }
+});
+
+// GET /api/ai/transaction-suggestions - Get pending AI transaction mapping suggestions
+app.get('/api/ai/transaction-suggestions', async (req, res) => {
+    try {
+        const result = await aiService.getPendingTransactionSuggestions();
+
+        res.json({
+            success: result.success,
+            suggestions: result.suggestions
+        });
+    } catch (error) {
+        console.error('Error fetching pending transaction suggestions:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message,
+            suggestions: []
+        });
+    }
+});
+
+// POST /api/ai/approve-transaction-mapping/:id - Approve and create mapping from AI suggestion
+app.post('/api/ai/approve-transaction-mapping/:id', async (req, res) => {
+    try {
+        const suggestionId = parseInt(req.params.id);
+
+        if (isNaN(suggestionId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid suggestion ID'
+            });
+        }
+
+        const result = await aiService.approveTransactionMapping(suggestionId);
+
+        res.json({
+            success: result.success,
+            message: result.message
+        });
+    } catch (error) {
+        console.error('Error approving transaction mapping:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// POST /api/ai/reject-transaction-mapping/:id - Reject AI suggestion
+app.post('/api/ai/reject-transaction-mapping/:id', async (req, res) => {
+    try {
+        const suggestionId = parseInt(req.params.id);
+
+        if (isNaN(suggestionId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid suggestion ID'
+            });
+        }
+
+        const result = await aiService.rejectTransactionMapping(suggestionId);
+
+        res.json({
+            success: result.success,
+            message: result.message
+        });
+    } catch (error) {
+        console.error('Error rejecting transaction mapping:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// ====================================================================
+// ACCOUNT MAPPING ENDPOINTS (QuickBooks Desktop Integration)
+// ====================================================================
+
+// Get all account mappings with full account details
+app.get('/api/qbd/mappings', async (req, res) => {
+    try {
+        const mappings = await db.query(`
+            SELECT
+                am.id,
+                am.mapping_type,
+                am.qb_account_id,
+                am.qb_account_name,
+                am.description,
+                am.is_active,
+                am.created_at,
+                am.updated_at,
+                qa.account_name as qb_account_display_name,
+                qa.account_type,
+                qa.account_number,
+                qa.fully_qualified_name
+            FROM account_mappings am
+            LEFT JOIN qb_accounts qa ON am.qb_account_id = qa.id
+            WHERE am.is_active = 1
+            ORDER BY am.mapping_type
+        `);
+
+        res.json({
+            success: true,
+            mappings: mappings,
+            count: mappings.length
+        });
+    } catch (error) {
+        console.error('Error getting account mappings:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Get specific account mapping by type
+app.get('/api/qbd/mappings/:type', async (req, res) => {
+    try {
+        const { type } = req.params;
+
+        const mapping = await db.get(`
+            SELECT
+                am.id,
+                am.mapping_type,
+                am.qb_account_id,
+                am.qb_account_name,
+                am.description,
+                am.is_active,
+                am.created_at,
+                am.updated_at,
+                qa.account_name as qb_account_display_name,
+                qa.account_type,
+                qa.account_number,
+                qa.fully_qualified_name,
+                qa.is_active as qb_account_active
+            FROM account_mappings am
+            LEFT JOIN qb_accounts qa ON am.qb_account_id = qa.id
+            WHERE am.mapping_type = ? AND am.is_active = 1
+        `, [type]);
+
+        if (!mapping) {
+            return res.status(404).json({
+                success: false,
+                message: `Account mapping not found for type: ${type}`
+            });
+        }
+
+        res.json({
+            success: true,
+            mapping: mapping
+        });
+    } catch (error) {
+        console.error('Error getting account mapping:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Save or update account mapping
+app.post('/api/qbd/mappings/:type', async (req, res) => {
+    try {
+        const { type } = req.params;
+        const { qb_account_id } = req.body;
+
+        // Validate that qb_account_id is provided
+        if (!qb_account_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'qb_account_id is required'
+            });
+        }
+
+        // Get the account details to store account name
+        const account = await db.get(
+            'SELECT id, account_name, account_type FROM qb_accounts WHERE id = ?',
+            [qb_account_id]
+        );
+
+        if (!account) {
+            return res.status(404).json({
+                success: false,
+                message: `QuickBooks account not found with id: ${qb_account_id}`
+            });
+        }
+
+        // Check if mapping exists
+        const existingMapping = await db.get(
+            'SELECT id FROM account_mappings WHERE mapping_type = ?',
+            [type]
+        );
+
+        if (existingMapping) {
+            // Update existing mapping
+            await db.run(
+                'UPDATE account_mappings SET qb_account_id = ?, qb_account_name = ?, updated_at = CURRENT_TIMESTAMP WHERE mapping_type = ?',
+                [qb_account_id, account.account_name, type]
+            );
+        } else {
+            // Insert new mapping
+            await db.run(
+                'INSERT INTO account_mappings (mapping_type, qb_account_id, qb_account_name, description, is_active) VALUES (?, ?, ?, ?, ?)',
+                [type, qb_account_id, account.account_name, `Account mapping for ${type}`, 1]
+            );
+        }
+
+        // Fetch and return the updated mapping with full details
+        const updatedMapping = await db.get(`
+            SELECT
+                am.id,
+                am.mapping_type,
+                am.qb_account_id,
+                am.qb_account_name,
+                am.description,
+                am.is_active,
+                am.created_at,
+                am.updated_at,
+                qa.account_name as qb_account_display_name,
+                qa.account_type,
+                qa.account_number,
+                qa.fully_qualified_name
+            FROM account_mappings am
+            LEFT JOIN qb_accounts qa ON am.qb_account_id = qa.id
+            WHERE am.mapping_type = ?
+        `, [type]);
+
+        res.json({
+            success: true,
+            message: 'Account mapping saved successfully',
+            mapping: updatedMapping
+        });
+    } catch (error) {
+        console.error('Error saving account mapping:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Remove account mapping (set qb_account_id to NULL)
+app.delete('/api/qbd/mappings/:type', async (req, res) => {
+    try {
+        const { type } = req.params;
+
+        // Check if mapping exists
+        const existingMapping = await db.get(
+            'SELECT id FROM account_mappings WHERE mapping_type = ?',
+            [type]
+        );
+
+        if (!existingMapping) {
+            return res.status(404).json({
+                success: false,
+                message: `Account mapping not found for type: ${type}`
+            });
+        }
+
+        // Set qb_account_id and qb_account_name to NULL instead of deleting
+        await db.run(
+            'UPDATE account_mappings SET qb_account_id = NULL, qb_account_name = NULL, updated_at = CURRENT_TIMESTAMP WHERE mapping_type = ?',
+            [type]
+        );
+
+        res.json({
+            success: true,
+            message: `Account mapping cleared for type: ${type}`
+        });
+    } catch (error) {
+        console.error('Error removing account mapping:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// AI-Powered Customer Mapping Endpoints
+// ==============================================
+
+// Note: AIService already imported at top of file (line 18)
+// Initialize AI service with database
+
+// Initialize AI service with API key from environment or config
+(async () => {
+    try {
+        // Try to get API key from environment variable first
+        let apiKey = process.env.ANTHROPIC_API_KEY;
+
+        // If not in env, try to get from database config
+        if (!apiKey) {
+            const config = await db.get('SELECT value FROM ai_settings WHERE key = ?', ['anthropic_api_key']);
+            apiKey = config?.value;
+        }
+
+        if (apiKey) {
+            aiService.initialize(apiKey);
+            console.log('✨ AI Service initialized successfully');
+        } else {
+            console.log('⚠️  AI Service not initialized - configure ANTHROPIC_API_KEY to enable AI features');
+        }
+    } catch (error) {
+        console.error('❌ Failed to initialize AI service:', error.message);
+    }
+})();
+
+/**
+ * POST /api/ai/suggest-customer-mappings
+ * Generate AI-powered customer mapping suggestions
+ */
+app.post('/api/ai/suggest-customer-mappings', async (req, res) => {
+    try {
+        if (!aiService.isReady()) {
+            return res.status(503).json({
+                success: false,
+                message: 'AI service not configured. Set ANTHROPIC_API_KEY environment variable or configure in settings.'
+            });
+        }
+
+        console.log('🤖 Starting AI customer mapping suggestion process...');
+
+        // Fetch unmapped customers from all three systems
+        const unmappedStripe = await db.all(`
+            SELECT sc.*
+            FROM stripe_customers sc
+            LEFT JOIN customer_mappings cm ON sc.stripe_id = cm.stripe_customer_id
+            WHERE cm.id IS NULL
+            ORDER BY sc.created DESC
+            LIMIT 50
+        `);
+
+        const unmappedHaloPSA = await db.all(`
+            SELECT hc.*
+            FROM halopsa_clients hc
+            LEFT JOIN customer_mappings cm ON hc.halopsa_id = cm.halopsa_client_id
+            WHERE cm.id IS NULL
+            ORDER BY hc.name
+            LIMIT 50
+        `);
+
+        const unmappedQB = await db.all(`
+            SELECT qc.*
+            FROM qb_customers qc
+            LEFT JOIN customer_mappings cm ON qc.qb_list_id = cm.qb_customer_id
+            WHERE cm.id IS NULL
+            ORDER BY qc.qb_full_name
+            LIMIT 50
+        `);
+
+        console.log(`   Found ${unmappedStripe.length} unmapped Stripe customers`);
+        console.log(`   Found ${unmappedHaloPSA.length} unmapped HaloPSA clients`);
+        console.log(`   Found ${unmappedQB.length} unmapped QB customers`);
+
+        if (unmappedStripe.length === 0 && unmappedHaloPSA.length === 0 && unmappedQB.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No unmapped customers found - all customers are already mapped!',
+                count: 0,
+                suggestions: []
+            });
+        }
+
+        // Call AI service to generate suggestions
+        const aiSuggestions = await aiService.suggestCustomerMappings(
+            unmappedStripe,
+            unmappedHaloPSA,
+            unmappedQB
+        );
+
+        // Store suggestions in database
+        const insertStmt = db.db.prepare(`
+            INSERT INTO ai_mapping_suggestions
+            (suggestion_type, source_type, source_id, target_type, target_id, confidence, reasoning, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+        `);
+
+        let storedCount = 0;
+        for (const suggestion of aiSuggestions) {
+            try {
+                // Resolve actual database IDs from system IDs
+                let sourceDbId, targetDbId;
+
+                // Get source DB ID
+                if (suggestion.source_system === 'stripe') {
+                    const source = await db.get('SELECT id FROM stripe_customers WHERE stripe_id = ?', [suggestion.source_id]);
+                    sourceDbId = source?.id;
+                } else if (suggestion.source_system === 'halopsa') {
+                    const source = await db.get('SELECT id FROM halopsa_clients WHERE halopsa_id = ?', [suggestion.source_id]);
+                    sourceDbId = source?.id;
+                } else if (suggestion.source_system === 'quickbooks') {
+                    const source = await db.get('SELECT id FROM qb_customers WHERE qb_list_id = ?', [suggestion.source_id]);
+                    sourceDbId = source?.id;
+                }
+
+                // Get target DB ID
+                if (suggestion.target_system === 'stripe') {
+                    const target = await db.get('SELECT id FROM stripe_customers WHERE stripe_id = ?', [suggestion.target_id]);
+                    targetDbId = target?.id;
+                } else if (suggestion.target_system === 'halopsa') {
+                    const target = await db.get('SELECT id FROM halopsa_clients WHERE halopsa_id = ?', [suggestion.target_id]);
+                    targetDbId = target?.id;
+                } else if (suggestion.target_system === 'quickbooks') {
+                    const target = await db.get('SELECT id FROM qb_customers WHERE qb_list_id = ?', [suggestion.target_id]);
+                    targetDbId = target?.id;
+                }
+
+                if (sourceDbId && targetDbId) {
+                    insertStmt.run([
+                        'customer_mapping',
+                        suggestion.source_system,
+                        sourceDbId,
+                        suggestion.target_system,
+                        targetDbId,
+                        suggestion.confidence,
+                        suggestion.reasoning
+                    ]);
+                    storedCount++;
+                } else {
+                    console.warn(`   ⚠️  Skipping suggestion: Could not resolve IDs for ${suggestion.source_system}:${suggestion.source_id} -> ${suggestion.target_system}:${suggestion.target_id}`);
+                }
+            } catch (error) {
+                console.error('   ❌ Error storing suggestion:', error.message);
+            }
+        }
+
+        console.log(`   ✅ Stored ${storedCount} AI mapping suggestions`);
+
+        res.json({
+            success: true,
+            message: `Generated ${storedCount} AI-powered mapping suggestions`,
+            count: storedCount,
+            suggestions: aiSuggestions
+        });
+    } catch (error) {
+        console.error('❌ Error generating AI suggestions:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to generate AI suggestions'
+        });
+    }
+});
+
+/**
+ * GET /api/ai/customer-suggestions
+ * Get pending AI customer mapping suggestions with full customer details
+ */
+app.get('/api/ai/customer-suggestions', async (req, res) => {
+    try {
+        const suggestions = await db.all(`
+            SELECT
+                ais.*,
+                CASE
+                    WHEN ais.source_type = 'stripe' THEN (SELECT json_object(
+                        'stripe_id', stripe_id,
+                        'name', name,
+                        'email', email,
+                        'phone', phone
+                    ) FROM stripe_customers WHERE id = ais.source_id)
+                    WHEN ais.source_type = 'halopsa' THEN (SELECT json_object(
+                        'halopsa_id', halopsa_id,
+                        'name', name,
+                        'email', email,
+                        'phone', phone
+                    ) FROM halopsa_clients WHERE id = ais.source_id)
+                    WHEN ais.source_type = 'quickbooks' THEN (SELECT json_object(
+                        'qb_list_id', qb_list_id,
+                        'qb_full_name', qb_full_name,
+                        'email', email,
+                        'phone', phone
+                    ) FROM qb_customers WHERE id = ais.source_id)
+                END as source_data,
+                CASE
+                    WHEN ais.target_type = 'stripe' THEN (SELECT json_object(
+                        'stripe_id', stripe_id,
+                        'name', name,
+                        'email', email,
+                        'phone', phone
+                    ) FROM stripe_customers WHERE id = ais.target_id)
+                    WHEN ais.target_type = 'halopsa' THEN (SELECT json_object(
+                        'halopsa_id', halopsa_id,
+                        'name', name,
+                        'email', email,
+                        'phone', phone
+                    ) FROM halopsa_clients WHERE id = ais.target_id)
+                    WHEN ais.target_type = 'quickbooks' THEN (SELECT json_object(
+                        'qb_list_id', qb_list_id,
+                        'qb_full_name', qb_full_name,
+                        'email', email,
+                        'phone', phone
+                    ) FROM qb_customers WHERE id = ais.target_id)
+                END as target_data
+            FROM ai_mapping_suggestions ais
+            WHERE ais.status = 'pending'
+            AND ais.suggestion_type = 'customer_mapping'
+            ORDER BY ais.confidence DESC, ais.created_at DESC
+        `);
+
+        // Parse JSON strings
+        const enrichedSuggestions = suggestions.map(s => ({
+            ...s,
+            source_data: s.source_data ? JSON.parse(s.source_data) : null,
+            target_data: s.target_data ? JSON.parse(s.target_data) : null
+        }));
+
+        res.json({
+            success: true,
+            count: enrichedSuggestions.length,
+            suggestions: enrichedSuggestions
+        });
+    } catch (error) {
+        console.error('❌ Error fetching AI suggestions:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch AI suggestions'
+        });
+    }
+});
+
+/**
+ * POST /api/ai/approve-customer-mapping/:id
+ * Approve an AI suggestion and create actual customer mapping
+ */
+app.post('/api/ai/approve-customer-mapping/:id', async (req, res) => {
+    try {
+        const suggestionId = parseInt(req.params.id);
+
+        // Get the suggestion
+        const suggestion = await db.get(
+            'SELECT * FROM ai_mapping_suggestions WHERE id = ? AND status = "pending"',
+            [suggestionId]
+        );
+
+        if (!suggestion) {
+            return res.status(404).json({
+                success: false,
+                message: 'Suggestion not found or already processed'
+            });
+        }
+
+        // Get customer details to populate mapping
+        let stripeCustomerId = null, stripeCustomerEmail = null, stripeCustomerName = null;
+        let haloPSAClientId = null, haloPSAClientName = null;
+        let qbCustomerId = null, qbCustomerName = null;
+
+        // Determine which system is source and target
+        if (suggestion.source_type === 'stripe') {
+            const stripe = await db.get('SELECT stripe_id, email, name FROM stripe_customers WHERE id = ?', [suggestion.source_id]);
+            if (stripe) {
+                stripeCustomerId = stripe.stripe_id;
+                stripeCustomerEmail = stripe.email;
+                stripeCustomerName = stripe.name;
+            }
+        } else if (suggestion.target_type === 'stripe') {
+            const stripe = await db.get('SELECT stripe_id, email, name FROM stripe_customers WHERE id = ?', [suggestion.target_id]);
+            if (stripe) {
+                stripeCustomerId = stripe.stripe_id;
+                stripeCustomerEmail = stripe.email;
+                stripeCustomerName = stripe.name;
+            }
+        }
+
+        if (suggestion.source_type === 'halopsa') {
+            const halo = await db.get('SELECT halopsa_id, name FROM halopsa_clients WHERE id = ?', [suggestion.source_id]);
+            if (halo) {
+                haloPSAClientId = halo.halopsa_id;
+                haloPSAClientName = halo.name;
+            }
+        } else if (suggestion.target_type === 'halopsa') {
+            const halo = await db.get('SELECT halopsa_id, name FROM halopsa_clients WHERE id = ?', [suggestion.target_id]);
+            if (halo) {
+                haloPSAClientId = halo.halopsa_id;
+                haloPSAClientName = halo.name;
+            }
+        }
+
+        if (suggestion.source_type === 'quickbooks') {
+            const qb = await db.get('SELECT qb_list_id, qb_full_name FROM qb_customers WHERE id = ?', [suggestion.source_id]);
+            if (qb) {
+                qbCustomerId = qb.qb_list_id;
+                qbCustomerName = qb.qb_full_name;
+            }
+        } else if (suggestion.target_type === 'quickbooks') {
+            const qb = await db.get('SELECT qb_list_id, qb_full_name FROM qb_customers WHERE id = ?', [suggestion.target_id]);
+            if (qb) {
+                qbCustomerId = qb.qb_list_id;
+                qbCustomerName = qb.qb_full_name;
+            }
+        }
+
+        // Create customer mapping
+        const result = db.run(`
+            INSERT INTO customer_mappings
+            (stripe_customer_id, stripe_customer_email, stripe_customer_name,
+             halopsa_client_id, halopsa_client_name,
+             qb_customer_id, qb_customer_name,
+             auto_mapped, mapping_confirmed, mapping_source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 'ai_suggestion')
+        `, [
+            stripeCustomerId, stripeCustomerEmail, stripeCustomerName,
+            haloPSAClientId, haloPSAClientName,
+            qbCustomerId, qbCustomerName
+        ]);
+
+        // Update suggestion status
+        db.run(
+            'UPDATE ai_mapping_suggestions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            ['approved', suggestionId]
+        );
+
+        console.log(`✅ Approved AI suggestion ${suggestionId} and created mapping ${result.lastInsertRowid}`);
+
+        res.json({
+            success: true,
+            message: 'Mapping created successfully',
+            mappingId: result.lastInsertRowid
+        });
+    } catch (error) {
+        console.error('❌ Error approving AI suggestion:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to approve suggestion'
+        });
+    }
+});
+
+/**
+ * POST /api/ai/reject-customer-mapping/:id
+ * Reject an AI suggestion
+ */
+app.post('/api/ai/reject-customer-mapping/:id', async (req, res) => {
+    try {
+        const suggestionId = parseInt(req.params.id);
+
+        const result = db.run(
+            'UPDATE ai_mapping_suggestions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = "pending"',
+            ['rejected', suggestionId]
+        );
+
+        if (result.changes === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Suggestion not found or already processed'
+            });
+        }
+
+        console.log(`🚫 Rejected AI suggestion ${suggestionId}`);
+
+        res.json({
+            success: true,
+            message: 'Suggestion rejected'
+        });
+    } catch (error) {
+        console.error('❌ Error rejecting AI suggestion:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to reject suggestion'
+        });
+    }
+});
+
+// =============================================================================
+// REGISTER AI ENDPOINTS
+// =============================================================================
+const aiTriggers = registerAIEndpoints(app, aiService, db);
 
 app.listen(port, () => {
     console.log(`\n🚀 CSV to QuickBooks IIF Server running on http://localhost:${port}`);
@@ -4282,31 +6466,360 @@ app.post('/api/map-invoice-to-stripe', async (req, res) => {
 app.post('/api/unmap-invoice', async (req, res) => {
     try {
         const { invoiceId } = req.body;
-        
+
         if (!invoiceId) {
             return res.status(400).json({ success: false, message: 'Invoice ID is required' });
         }
-        
+
         // Verify invoice exists
         const invoice = await db.get('SELECT id FROM halopsa_invoices WHERE id = ?', [invoiceId]);
         if (!invoice) {
             return res.status(404).json({ success: false, message: 'Invoice not found' });
         }
-        
+
         // Clear stripe transaction ID
         await db.run(
             'UPDATE halopsa_invoices SET stripe_transaction_id = NULL, mapping_date = NULL WHERE id = ?',
             [invoiceId]
         );
-        
-        res.json({ 
-            success: true, 
+
+        res.json({
+            success: true,
             message: 'Invoice successfully unmapped',
             invoiceId
         });
-        
+
     } catch (error) {
         console.error('Error unmapping invoice:', error);
         res.status(500).json({ success: false, message: 'Error unmapping invoice' });
+    }
+});
+
+// =============================================================================
+// AI SETTINGS ENDPOINTS - Multi-Provider Support (Anthropic + OpenRouter)
+// =============================================================================
+
+// Get all AI settings
+app.get('/api/ai/settings', async (req, res) => {
+    try {
+        const settings = await db.all('SELECT key, value FROM ai_settings');
+        const settingsObj = {};
+        settings.forEach(s => {
+            // Mask API keys for security
+            if (s.key.includes('api_key') && s.value) {
+                settingsObj[s.key] = '***' + s.value.slice(-4);
+            } else {
+                settingsObj[s.key] = s.value;
+            }
+        });
+
+        // Add readiness status
+        settingsObj.is_configured = aiService.isReady();
+        settingsObj.current_provider = aiService.provider;
+
+        res.json({ success: true, settings: settingsObj });
+    } catch (error) {
+        console.error('Error fetching AI settings:', error);
+        res.status(500).json({ success: false, message: 'Error fetching AI settings' });
+    }
+});
+
+// Save AI settings (supports both Anthropic and OpenRouter)
+app.post('/api/ai/settings', async (req, res) => {
+    try {
+        const {
+            ai_provider,
+            anthropic_api_key,
+            anthropic_model,
+            openrouter_api_key,
+            openrouter_model
+        } = req.body;
+
+        // Update provider selection
+        if (ai_provider) {
+            if (!['anthropic', 'openrouter'].includes(ai_provider)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid provider. Must be "anthropic" or "openrouter"'
+                });
+            }
+            await db.run(
+                'INSERT OR REPLACE INTO ai_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+                ['ai_provider', ai_provider]
+            );
+        }
+
+        // Update Anthropic settings
+        if (anthropic_api_key) {
+            await db.run(
+                'INSERT OR REPLACE INTO ai_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+                ['anthropic_api_key', anthropic_api_key]
+            );
+        }
+
+        if (anthropic_model) {
+            await db.run(
+                'INSERT OR REPLACE INTO ai_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+                ['anthropic_model', anthropic_model]
+            );
+        }
+
+        // Update OpenRouter settings
+        if (openrouter_api_key) {
+            await db.run(
+                'INSERT OR REPLACE INTO ai_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+                ['openrouter_api_key', openrouter_api_key]
+            );
+        }
+
+        if (openrouter_model) {
+            await db.run(
+                'INSERT OR REPLACE INTO ai_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+                ['openrouter_model', openrouter_model]
+            );
+        }
+
+        // Re-initialize AI service with new settings
+        const allSettings = await db.all('SELECT key, value FROM ai_settings');
+        const config = {};
+        allSettings.forEach(s => {
+            config[s.key] = s.value;
+        });
+        aiService.initialize(config);
+
+        res.json({
+            success: true,
+            message: 'AI settings saved successfully',
+            provider: aiService.provider,
+            is_ready: aiService.isReady()
+        });
+
+    } catch (error) {
+        console.error('Error saving AI settings:', error);
+        res.status(500).json({ success: false, message: 'Error saving AI settings' });
+    }
+});
+
+// Get available Anthropic models
+app.get('/api/ai/models', async (req, res) => {
+    try {
+        const models = [
+            { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', description: 'Most capable model for complex tasks' },
+            { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', description: 'Excellent balance of intelligence and speed' },
+            { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet', description: 'Optimized for analysis and reasoning' }
+        ];
+        res.json({ success: true, models });
+    } catch (error) {
+        console.error('Error fetching AI models:', error);
+        res.status(500).json({ success: false, message: 'Error fetching AI models' });
+    }
+});
+
+// Get available OpenRouter models
+app.get('/api/ai/openrouter-models', async (req, res) => {
+    try {
+        const models = [
+            {
+                id: 'anthropic/claude-3.5-sonnet',
+                name: 'Claude 3.5 Sonnet',
+                description: 'Best balance of performance and cost',
+                provider: 'Anthropic'
+            },
+            {
+                id: 'anthropic/claude-sonnet-4-20250514',
+                name: 'Claude Sonnet 4',
+                description: 'Most capable Claude model',
+                provider: 'Anthropic'
+            },
+            {
+                id: 'openai/gpt-4-turbo',
+                name: 'GPT-4 Turbo',
+                description: 'OpenAI\'s fastest GPT-4 model',
+                provider: 'OpenAI'
+            },
+            {
+                id: 'openai/gpt-4o',
+                name: 'GPT-4o',
+                description: 'OpenAI\'s flagship multimodal model',
+                provider: 'OpenAI'
+            },
+            {
+                id: 'google/gemini-pro-1.5',
+                name: 'Gemini Pro 1.5',
+                description: 'Google\'s advanced AI model',
+                provider: 'Google'
+            },
+            {
+                id: 'meta-llama/llama-3.1-70b-instruct',
+                name: 'Llama 3.1 70B',
+                description: 'Meta\'s open-source powerhouse',
+                provider: 'Meta'
+            }
+        ];
+        res.json({ success: true, models });
+    } catch (error) {
+        console.error('Error fetching OpenRouter models:', error);
+        res.status(500).json({ success: false, message: 'Error fetching OpenRouter models' });
+    }
+});
+
+// Test AI API connection (supports both providers)
+app.post('/api/ai/test-connection', async (req, res) => {
+    try {
+        const { provider, api_key } = req.body;
+
+        if (!provider) {
+            return res.status(400).json({
+                success: false,
+                message: 'Provider is required for testing'
+            });
+        }
+
+        // If no API key provided, try to get it from database
+        let apiKeyToUse = api_key;
+        if (!apiKeyToUse) {
+            const keyField = provider === 'anthropic' ? 'anthropic_api_key' : 'openrouter_api_key';
+            const savedKey = await db.get(`SELECT value FROM ai_settings WHERE key = ?`, [keyField]);
+
+            if (!savedKey || !savedKey.value) {
+                return res.status(400).json({
+                    success: false,
+                    message: `No ${provider} API key found. Please save your API key first.`
+                });
+            }
+            apiKeyToUse = savedKey.value;
+        }
+
+        const https = require('https');
+
+        if (provider === 'anthropic') {
+            // Test Anthropic Direct API
+            const testPayload = JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 50,
+                messages: [
+                    { role: 'user', content: 'Reply with only "Connection successful"' }
+                ]
+            });
+
+            const options = {
+                hostname: 'api.anthropic.com',
+                path: '/v1/messages',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKeyToUse,
+                    'anthropic-version': '2023-06-01'
+                }
+            };
+
+            const apiRequest = https.request(options, (apiRes) => {
+                let data = '';
+                apiRes.on('data', (chunk) => { data += chunk; });
+                apiRes.on('end', () => {
+                    try {
+                        const response = JSON.parse(data);
+                        if (apiRes.statusCode === 200 && response.content) {
+                            res.json({
+                                success: true,
+                                message: 'Anthropic API connection successful',
+                                response: response.content[0]?.text || 'Connected'
+                            });
+                        } else {
+                            res.status(apiRes.statusCode).json({
+                                success: false,
+                                message: response.error?.message || 'API test failed',
+                                error: response.error
+                            });
+                        }
+                    } catch (parseError) {
+                        res.status(500).json({
+                            success: false,
+                            message: 'Invalid API response'
+                        });
+                    }
+                });
+            });
+
+            apiRequest.on('error', (error) => {
+                res.status(500).json({
+                    success: false,
+                    message: 'Connection failed: ' + error.message
+                });
+            });
+
+            apiRequest.write(testPayload);
+            apiRequest.end();
+
+        } else if (provider === 'openrouter') {
+            // Test OpenRouter API
+            const testPayload = JSON.stringify({
+                model: 'anthropic/claude-3.5-sonnet',
+                messages: [
+                    { role: 'user', content: 'Reply with only "Connection successful"' }
+                ],
+                max_tokens: 50
+            });
+
+            const options = {
+                hostname: 'openrouter.ai',
+                path: '/api/v1/chat/completions',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKeyToUse}`,
+                    'HTTP-Referer': 'http://localhost:3000',
+                    'X-Title': 'csv-to-qb-iif'
+                }
+            };
+
+            const apiRequest = https.request(options, (apiRes) => {
+                let data = '';
+                apiRes.on('data', (chunk) => { data += chunk; });
+                apiRes.on('end', () => {
+                    try {
+                        const response = JSON.parse(data);
+                        if (apiRes.statusCode === 200 && response.choices) {
+                            res.json({
+                                success: true,
+                                message: 'OpenRouter API connection successful',
+                                response: response.choices[0]?.message?.content || 'Connected'
+                            });
+                        } else {
+                            res.status(apiRes.statusCode).json({
+                                success: false,
+                                message: response.error?.message || 'API test failed',
+                                error: response.error
+                            });
+                        }
+                    } catch (parseError) {
+                        res.status(500).json({
+                            success: false,
+                            message: 'Invalid API response'
+                        });
+                    }
+                });
+            });
+
+            apiRequest.on('error', (error) => {
+                res.status(500).json({
+                    success: false,
+                    message: 'Connection failed: ' + error.message
+                });
+            });
+
+            apiRequest.write(testPayload);
+            apiRequest.end();
+
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid provider. Must be "anthropic" or "openrouter"'
+            });
+        }
+
+    } catch (error) {
+        console.error('Error testing AI connection:', error);
+        res.status(500).json({ success: false, message: 'Error testing connection' });
     }
 });

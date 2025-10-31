@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drag & Drop Customer Mapping</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            color: #2c3e50;
+            padding: 2rem;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 1.75rem; font-weight: 600; }
+        .header p { opacity: 0.9; margin-top: 0.25rem; font-size: 0.95rem; }
+
+        .drag-instructions {
+            background: #eef2ff;
+            border-left: 4px solid #667eea;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            color: #2c3e50;
+        }
+        .drag-instructions strong {
+            color: #667eea;
+        }
+
+        .mapping-filters {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .mapping-filter-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .mapping-filter-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+        .mapping-filter-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .drag-drop-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .drag-column {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            min-height: 600px;
+            max-height: 800px;
+            overflow-y: auto;
+        }
+        .drag-column h3 {
+            margin-bottom: 1rem;
+            color: #2c3e50;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: sticky;
+            top: 0;
+            background: #f8f9fa;
+            padding-bottom: 0.75rem;
+            z-index: 10;
+        }
+        .drag-column-count {
+            background: #667eea;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            margin-left: auto;
+        }
+
+        /* Draggable Stripe Cards */
+        .drag-card {
+            background: white;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 6px;
+            border: 2px solid #ecf0f1;
+            cursor: move;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .drag-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+            transform: translateY(-2px);
+        }
+        .drag-card.dragging {
+            opacity: 0.5;
+            cursor: grabbing;
+            transform: rotate(2deg);
+        }
+        .drag-card.mapped {
+            border-color: #38ef7d;
+            background: #f0fdf4;
+        }
+        .drag-card.mapped::before {
+            content: "✓";
+            color: #38ef7d;
+            font-weight: bold;
+            margin-right: 0.5rem;
+            font-size: 1.2rem;
+        }
+        .drag-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+        .drag-card-name {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.95rem;
+        }
+        .drag-card-email {
+            font-size: 0.85rem;
+            color: #7f8c8d;
+        }
+        .drag-card-badge {
+            background: #38ef7d;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .drag-card-unmap {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .drag-card-unmap:hover {
+            background: #c0392b;
+        }
+
+        /* Drop Zones (HaloPSA Clients) */
+        .drop-zone {
+            background: white;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 6px;
+            border: 2px dashed #ddd;
+            transition: all 0.2s;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .drop-zone:hover {
+            border-color: #95a5a6;
+            background: #f8f9fa;
+        }
+        .drop-zone.drag-over {
+            border-color: #667eea;
+            background: #eef2ff;
+            border-style: solid;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            transform: scale(1.02);
+        }
+        .drop-zone.has-mapping {
+            border-style: solid;
+            border-color: #38ef7d;
+            background: #f0fdf4;
+        }
+        .drop-zone.has-mapping::before {
+            content: "✓";
+            color: #38ef7d;
+            font-weight: bold;
+            margin-right: 0.5rem;
+            font-size: 1.2rem;
+        }
+        .drop-zone-content {
+            flex: 1;
+        }
+        .drop-zone-name {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.95rem;
+        }
+        .drop-zone-email {
+            font-size: 0.85rem;
+            color: #7f8c8d;
+        }
+        .drop-zone-mapped {
+            font-size: 0.85rem;
+            color: #27ae60;
+            margin-top: 0.25rem;
+            font-weight: 500;
+        }
+        .drop-zone-mapped-icon {
+            color: #38ef7d;
+            margin-right: 0.25rem;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 2rem auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: none;
+            align-items: center;
+            gap: 1rem;
+            z-index: 1000;
+        }
+        .toast.show { display: flex; }
+        .toast.success { border-left: 4px solid #38ef7d; }
+        .toast.error { border-left: 4px solid #e74c3c; }
+        .toast.info { border-left: 4px solid #3498db; }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5568d3; }
+        .btn-success { background: #38ef7d; color: white; }
+        .btn-success:hover { background: #2ed36e; }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #95a5a6;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Drag & Drop Customer Mapping</h1>
+        <p>Drag Stripe customers to HaloPSA clients to create mappings</p>
+    </div>
+
+    <div class="drag-instructions">
+        <strong>How to use:</strong> Drag a Stripe customer card from the left column and drop it on a HaloPSA client in the right column to create a mapping. Mapped customers show a green checkmark. Click "Unmap" to remove a mapping.
+    </div>
+
+    <div class="mapping-filters">
+        <button class="mapping-filter-btn active" onclick="filterMappings('all')">All Customers</button>
+        <button class="mapping-filter-btn" onclick="filterMappings('mapped')">Mapped Only</button>
+        <button class="mapping-filter-btn" onclick="filterMappings('unmapped')">Unmapped Only</button>
+        <button class="btn btn-success" onclick="autoMapCustomers()" style="margin-left: auto;">Auto-Map Customers</button>
+        <button class="btn btn-primary" onclick="loadMappingData()">Refresh Data</button>
+    </div>
+
+    <div class="drag-drop-layout">
+        <!-- Stripe Customers (Draggable) -->
+        <div class="drag-column">
+            <h3>
+                Stripe Customers
+                <span class="drag-column-count" id="stripe-count">0</span>
+            </h3>
+            <div id="stripe-customers-container">
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <!-- HaloPSA Clients (Drop Zones) -->
+        <div class="drag-column">
+            <h3>
+                HaloPSA Clients
+                <span class="drag-column-count" id="halo-count">0</span>
+            </h3>
+            <div id="halopsa-clients-container">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast">
+        <div id="toast-message"></div>
+    </div>
+
+    <script>
+        let stripeCustomers = [];
+        let haloPSAClients = [];
+        let customerMappings = [];
+        let currentFilter = 'all';
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-message').textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => toast.classList.remove('show'), 5000);
+        }
+
+        async function loadMappingData() {
+            showToast('Loading customer data...', 'info');
+
+            try {
+                // Fetch Stripe customers, HaloPSA clients, and existing mappings
+                const [stripeRes, haloRes, mappingsRes] = await Promise.all([
+                    fetch('/api/stripe/customers/imported'),
+                    fetch('/api/customers/all'),
+                    fetch('/api/customers/mappings')
+                ]);
+
+                stripeCustomers = await stripeRes.json();
+                haloPSAClients = await haloRes.json();
+                customerMappings = await mappingsRes.json();
+
+                renderStripeCustomers();
+                renderHaloPSAClients();
+
+                showToast('Data loaded successfully!', 'success');
+            } catch (error) {
+                console.error('Error loading data:', error);
+                showToast('Error loading customer data', 'error');
+            }
+        }
+
+        function renderStripeCustomers() {
+            const container = document.getElementById('stripe-customers-container');
+
+            if (!stripeCustomers || stripeCustomers.length === 0) {
+                container.innerHTML = '<div class="empty-state">No Stripe customers found. Import Stripe data first.</div>';
+                document.getElementById('stripe-count').textContent = '0';
+                return;
+            }
+
+            let visibleCount = 0;
+            const html = stripeCustomers.map(customer => {
+                const mapping = customerMappings.find(m => m.stripe_customer_id === customer.stripe_id);
+                const isMapped = !!mapping;
+
+                // Apply filter
+                if (currentFilter === 'mapped' && !isMapped) return '';
+                if (currentFilter === 'unmapped' && isMapped) return '';
+
+                visibleCount++;
+
+                return `
+                    <div class="drag-card ${isMapped ? 'mapped' : ''}"
+                         draggable="true"
+                         data-stripe-id="${customer.stripe_id}"
+                         data-stripe-name="${customer.name || ''}"
+                         data-stripe-email="${customer.email || ''}"
+                         ondragstart="handleDragStart(event)"
+                         ondragend="handleDragEnd(event)">
+                        <div class="drag-card-header">
+                            <div>
+                                <div class="drag-card-name">${customer.name || 'Unnamed Customer'}</div>
+                                <div class="drag-card-email">${customer.email || 'No email'}</div>
+                            </div>
+                            ${isMapped ? `
+                                <button class="drag-card-unmap" onclick="unmapCustomer('${customer.stripe_id}', event)">
+                                    Unmap
+                                </button>
+                            ` : ''}
+                        </div>
+                        ${isMapped ? `
+                            <div class="drag-card-email" style="margin-top: 0.5rem; color: #27ae60;">
+                                → Mapped to ${mapping.halopsa_client_name}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).filter(Boolean).join('');
+
+            container.innerHTML = html || '<div class="empty-state">No customers match the current filter.</div>';
+            document.getElementById('stripe-count').textContent = visibleCount;
+        }
+
+        function renderHaloPSAClients() {
+            const container = document.getElementById('halopsa-clients-container');
+
+            if (!haloPSAClients || haloPSAClients.length === 0) {
+                container.innerHTML = '<div class="empty-state">No HaloPSA clients found. Import HaloPSA data first.</div>';
+                document.getElementById('halo-count').textContent = '0';
+                return;
+            }
+
+            let visibleCount = 0;
+            const html = haloPSAClients.map(client => {
+                const mapping = customerMappings.find(m => m.halopsa_client_id === client.halopsa_id);
+                const hasMapping = !!mapping;
+
+                // Apply filter
+                if (currentFilter === 'mapped' && !hasMapping) return '';
+                if (currentFilter === 'unmapped' && hasMapping) return '';
+
+                visibleCount++;
+
+                return `
+                    <div class="drop-zone ${hasMapping ? 'has-mapping' : ''}"
+                         data-halopsa-id="${client.halopsa_id}"
+                         data-halopsa-name="${client.name || ''}"
+                         ondrop="handleDrop(event)"
+                         ondragover="handleDragOver(event)"
+                         ondragenter="handleDragEnter(event)"
+                         ondragleave="handleDragLeave(event)">
+                        <div class="drop-zone-content">
+                            <div class="drop-zone-name">${client.name || 'Unnamed Client'}</div>
+                            <div class="drop-zone-email">${client.email || 'No email'}</div>
+                            ${hasMapping ? `
+                                <div class="drop-zone-mapped">
+                                    <span class="drop-zone-mapped-icon">←</span>
+                                    Mapped from ${mapping.stripe_customer_name}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).filter(Boolean).join('');
+
+            container.innerHTML = html || '<div class="empty-state">No clients match the current filter.</div>';
+            document.getElementById('halo-count').textContent = visibleCount;
+        }
+
+        function handleDragStart(event) {
+            event.currentTarget.classList.add('dragging');
+
+            // Set drag data
+            const stripeId = event.currentTarget.dataset.stripeId;
+            const stripeName = event.currentTarget.dataset.stripeName;
+            const stripeEmail = event.currentTarget.dataset.stripeEmail;
+
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', JSON.stringify({
+                stripeId,
+                stripeName,
+                stripeEmail
+            }));
+        }
+
+        function handleDragEnd(event) {
+            event.currentTarget.classList.remove('dragging');
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+        }
+
+        function handleDragEnter(event) {
+            if (event.currentTarget.classList.contains('drop-zone')) {
+                event.currentTarget.classList.add('drag-over');
+            }
+        }
+
+        function handleDragLeave(event) {
+            if (event.currentTarget.classList.contains('drop-zone')) {
+                // Only remove if actually leaving (not entering child)
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                    event.currentTarget.classList.remove('drag-over');
+                }
+            }
+        }
+
+        async function handleDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('drag-over');
+
+            // Get dropped data
+            const data = JSON.parse(event.dataTransfer.getData('text/plain'));
+            const halopsaId = event.currentTarget.dataset.halopsaId;
+            const halopsaName = event.currentTarget.dataset.halopsaName;
+
+            // Create mapping
+            await createMapping(data.stripeId, data.stripeName, data.stripeEmail, halopsaId, halopsaName);
+        }
+
+        async function createMapping(stripeId, stripeName, stripeEmail, halopsaId, halopsaName) {
+            showToast('Creating customer mapping...', 'info');
+
+            try {
+                const response = await fetch('/api/customers/mappings/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        stripe_customer_id: stripeId,
+                        stripe_customer_name: stripeName,
+                        stripe_customer_email: stripeEmail,
+                        halopsa_client_id: parseInt(halopsaId),
+                        halopsa_client_name: halopsaName
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success || response.ok) {
+                    showToast(`Mapped ${stripeName} to ${halopsaName}!`, 'success');
+                    await loadMappingData(); // Reload to show new mapping
+                } else {
+                    throw new Error(result.message || 'Failed to create mapping');
+                }
+            } catch (error) {
+                console.error('Error creating mapping:', error);
+                showToast(`Error creating mapping: ${error.message}`, 'error');
+            }
+        }
+
+        async function unmapCustomer(stripeId, event) {
+            event.stopPropagation();
+
+            if (!confirm('Are you sure you want to remove this mapping?')) {
+                return;
+            }
+
+            showToast('Removing mapping...', 'info');
+
+            try {
+                const response = await fetch(`/api/customers/mappings/${stripeId}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (result.success || response.ok) {
+                    showToast('Mapping removed successfully!', 'success');
+                    await loadMappingData(); // Reload to reflect changes
+                } else {
+                    throw new Error(result.message || 'Failed to remove mapping');
+                }
+            } catch (error) {
+                console.error('Error removing mapping:', error);
+                showToast(`Error removing mapping: ${error.message}`, 'error');
+            }
+        }
+
+        async function autoMapCustomers() {
+            showToast('Auto-mapping customers...', 'info');
+
+            try {
+                const response = await fetch('/api/customers/automatch', { method: 'POST' });
+                const result = await response.json();
+
+                showToast(`Auto-mapped ${result.matches?.length || 0} customers!`, 'success');
+                await loadMappingData(); // Reload to show new mappings
+            } catch (error) {
+                console.error('Error auto-mapping:', error);
+                showToast('Error during auto-mapping', 'error');
+            }
+        }
+
+        function filterMappings(filter) {
+            currentFilter = filter;
+
+            // Update active button
+            document.querySelectorAll('.mapping-filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Re-render with filter
+            renderStripeCustomers();
+            renderHaloPSAClients();
+        }
+
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadMappingData();
+        });
+    </script>
+</body>
+</html>

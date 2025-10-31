@@ -1,0 +1,197 @@
+<div class="tab-content" id="halopsa">
+  <div class="config-section">
+    <div class="config-header">
+      <h3>HaloPSA API Configuration</h3>
+    </div>
+    <form id="halopsaConfigForm">
+      <div class="form-group">
+        <label for="halopsa_api_url">HaloPSA Instance URL</label>
+        <input type="text" id="halopsa_api_url" name="halopsa_api_url" placeholder="https://yourcompany.halopsa.com">
+      </div>
+      <div class="form-group">
+        <label for="halopsa_client_id">OAuth Client ID</label>
+        <input type="text" id="halopsa_client_id" name="halopsa_client_id" placeholder="Client ID from HaloPSA app registration">
+      </div>
+      <div class="form-group">
+        <label for="halopsa_client_secret">OAuth Client Secret</label>
+        <input type="password" id="halopsa_client_secret" name="halopsa_client_secret" placeholder="Client Secret from HaloPSA app registration">
+      </div>
+      <div class="form-group">
+        <label for="halopsa_access_token">OAuth Access Token (Manual)</label>
+        <input type="password" id="halopsa_access_token" name="halopsa_access_token" placeholder="Manually obtained access token">
+        <small>Get this via OAuth flow for now</small>
+      </div>
+      <div class="form-group">
+        <label for="halopsa_purchase_order_report_id">Purchase Order Report ID</label>
+        <input type="text" id="halopsa_purchase_order_report_id" name="halopsa_purchase_order_report_id" placeholder="Report ID for purchase orders">
+      </div>
+      <div class="form-group">
+        <label for="halopsa_invoice_report_id">Invoice Report ID</label>
+        <input type="text" id="halopsa_invoice_report_id" name="halopsa_invoice_report_id" placeholder="Report ID for invoices">
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn">Save HaloPSA Config</button>
+        <button type="button" class="btn secondary" id="testHalopsa">Test Connection</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="config-section">
+    <div class="config-header">
+      <h3>HaloPSA Data Import</h3>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn primary" id="importHalopsaClients">Import HaloPSA Clients</button>
+      <button type="button" class="btn success" id="importHalopsaPurchaseOrders">Import Purchase Orders</button>
+      <button type="button" class="btn success" id="importHalopsaInvoices">Import Invoices</button>
+    </div>
+    
+    <!-- Progress Bars for HaloPSA -->
+    <div id="halopsaClientProgress" class="progress-container" style="display: none;">
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: 0%"></div>
+      </div>
+      <div class="progress-text" id="halopsaClientProgressText">Starting import...</div>
+    </div>
+    
+    <div id="halopsaPurchaseOrderProgress" class="progress-container" style="display: none;">
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: 0%"></div>
+      </div>
+      <div class="progress-text" id="halopsaPurchaseOrderProgressText">Starting import...</div>
+    </div>
+    
+    <div id="halopsaInvoiceProgress" class="progress-container" style="display: none;">
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: 0%"></div>
+      </div>
+      <div class="progress-text" id="halopsaInvoiceProgressText">Starting import...</div>
+    </div>
+  </div>
+
+  <div class="config-section">
+    <div class="config-header">
+      <h3>Imported HaloPSA Data</h3>
+    </div>
+    <div class="halopsa-data-tabs">
+      <div class="tabs">
+        <div class="tab active" data-halopsa-tab="clients">Clients</div>
+        <div class="tab" data-halopsa-tab="purchase-orders">Purchase Orders</div>
+        <div class="tab active" data-halopsa-tab="invoices">Invoices</div>
+      </div>
+      
+      <div class="halopsa-tab-content" id="halopsa-clients" style="display: none;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Client Name</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Created</th>
+              <th>Mapped To</th>
+            </tr>
+          </thead>
+          <tbody id="halopsaClientsTable">
+          </tbody>
+        </table>
+      </div>
+      
+      <div class="halopsa-tab-content" id="halopsa-purchase-orders" style="display: none;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>PO Number</th>
+              <th>Client</th>
+              <th>Date</th>
+              <th>Amount</th>
+              <th>Vendor</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="halopsaPurchaseOrdersTable">
+          </tbody>
+        </table>
+      </div>
+      
+      <div class="halopsa-tab-content" id="halopsa-invoices">
+        <div class="search-controls">
+          <input type="text" id="halopsaSearch" placeholder="Search invoices, clients..." class="search-input">
+          <button onclick="searchHalopsaInvoices()" class="btn-primary">Search</button>
+          <button onclick="clearHalopsaSearch()" class="btn-secondary">Clear</button>
+        </div>
+        <div class="table-container" style="max-height: 600px; overflow-y: auto;">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Invoice #</th>
+                <th>Client</th>
+                <th>Date</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Mapped To</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="halopsaInvoicesTable">
+            </tbody>
+          </table>
+        </div>
+        <div id="halopsaLoading" class="loading" style="display: none;">
+          <div class="spinner"></div>
+          <span>Loading more invoices...</span>
+        </div>
+        <div id="halopsaPagination" class="pagination-info">
+          Showing <span id="halopsaCurrentCount">0</span> of <span id="halopsaTotalCount">0</span> invoices
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mapping Modal -->
+<div id="mappingModal" class="modal" style="display: none;">
+  <div class="modal-content" style="max-width: 800px;">
+    <span class="close">&times;</span>
+    <h3>Map Stripe Payment to HaloPSA Invoice</h3>
+    
+    <div class="mapping-details">
+      <div class="invoice-info">
+        <h4>HaloPSA Invoice Details</h4>
+        <div id="invoiceDetails">
+          <!-- Invoice details will be populated here -->
+        </div>
+      </div>
+      
+      <div class="stripe-transactions">
+        <h4>Available Stripe Transactions</h4>
+        <div class="search-controls">
+          <input type="text" id="stripeSearch" placeholder="Search Stripe transactions..." class="search-input">
+          <button onclick="searchStripeTransactions()" class="btn-primary">Search</button>
+        </div>
+        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>Stripe ID</th>
+                <th>Amount</th>
+                <th>Customer</th>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Match Score</th>
+              </tr>
+            </thead>
+            <tbody id="stripeTransactionsList">
+              <!-- Stripe transactions will be populated here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <div class="modal-actions">
+      <button id="confirmMapping" class="btn-primary" onclick="confirmStripeMapping()" disabled>Confirm Mapping</button>
+      <button class="btn-secondary" onclick="closeMappingModal()">Cancel</button>
+    </div>
+  </div>
+</div>

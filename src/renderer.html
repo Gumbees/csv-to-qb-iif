@@ -41,7 +41,269 @@
       .customer-item { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
       .customer-item:hover { background: #f0f0f0; }
       .customer-item.selected { background: #e3f2fd; border-left: 3px solid #007acc; }
+      .no-customers-message { padding: 15px; text-align: center; color: #666; font-style: italic; background: #f9f9f9; border: 1px dashed #ddd; }
       .match-score { float: right; color: #666; font-size: 12px; }
+      
+      /* Enhanced Customer View Styles */
+      .customer-controls {
+        display: flex;
+        gap: 15px;
+        align-items: flex-end;
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 5px;
+      }
+      
+      .customer-controls .form-group {
+        margin-bottom: 0;
+      }
+      
+      .customer-search {
+        width: 300px;
+        padding: 8px 12px;
+      }
+      
+      .customer-filter {
+        padding: 8px 12px;
+      }
+      
+      .customer-list-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+      }
+      
+      .pagination-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      
+      .customer-list-content {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 20px;
+      }
+      
+      .customer-card {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        background: white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      
+      .customer-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 10px;
+      }
+      
+      .customer-card-header h3 {
+        margin: 0;
+        font-size: 1.1em;
+      }
+      
+      .customer-badges {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+      
+      .customer-card-body {
+        margin-bottom: 15px;
+      }
+      
+      .customer-info p {
+        margin: 5px 0;
+        font-size: 0.9em;
+        color: #666;
+      }
+      
+      .customer-stats {
+        display: flex;
+        gap: 15px;
+        margin-top: 10px;
+      }
+      
+      .stat {
+        text-align: center;
+      }
+      
+      .stat-number {
+        display: block;
+        font-size: 1.2em;
+        font-weight: bold;
+        color: #007bff;
+      }
+      
+      .stat-label {
+        font-size: 0.8em;
+        color: #666;
+      }
+      
+      .customer-card-actions {
+        display: flex;
+        gap: 10px;
+      }
+      
+      .customer-header {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+      }
+      
+      .customer-header h2 {
+        margin: 0 0 5px 0;
+      }
+      
+      .customer-meta {
+        color: #666;
+      }
+      
+      .customer-badge {
+        margin-bottom: 10px;
+      }
+      
+      .customer-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+        margin: 20px 0;
+      }
+      
+      .stat-card {
+        background: white;
+        padding: 15px;
+        border-radius: 5px;
+        text-align: center;
+        border: 1px solid #ddd;
+      }
+      
+      .stat-value {
+        font-size: 1.5em;
+        font-weight: bold;
+        color: #007bff;
+      }
+      
+      .stat-label {
+        font-size: 0.9em;
+        color: #666;
+        margin-top: 5px;
+      }
+      
+      .customer-tabs {
+        margin-top: 20px;
+      }
+      
+      .customer-tabs .tabs {
+        margin-bottom: 0;
+      }
+      
+      .customer-tab-content {
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-top: none;
+        display: none;
+      }
+      
+      .customer-tab-content.active {
+        display: block;
+      }
+      
+      .tab-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+      }
+      
+      .subtitle {
+        color: #666;
+        font-size: 0.9em;
+      }
+      
+      .overview-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+      }
+      
+      .overview-card {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        border-left: 4px solid #007bff;
+      }
+      
+      .overview-card h4 {
+        margin: 0 0 10px 0;
+        color: #495057;
+      }
+      
+      .mapping-info {
+        padding: 20px;
+      }
+      
+      .mapping-status {
+        border-left: 4px solid;
+        padding: 15px;
+        margin-bottom: 15px;
+        background: #f8f9fa;
+      }
+      
+      .mapping-status.mapped {
+        border-left-color: #28a745;
+      }
+      
+      .mapping-status.unmapped {
+        border-left-color: #dc3545;
+      }
+      
+      .no-customers, .no-data {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+        font-style: italic;
+      }
+      
+      .customer-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px solid #ddd;
+      }
+      
+      .error-message {
+        padding: 20px;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 5px;
+        color: #721c24;
+      }
+      
+      /* Progress Bar Styles */
+      .progress-container { margin: 20px 0; }
+      .progress-bar { background: #e9ecef; border-radius: 4px; height: 20px; overflow: hidden; }
+      .progress-fill { background: #007acc; height: 100%; transition: width 0.3s ease; }
+      .progress-text { text-align: center; margin-top: 5px; color: #666; }
+      
+      /* Import Status */
+      .import-status { padding: 10px; border-radius: 4px; margin: 10px 0; }
+      .import-status.importing { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+      .import-status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+      .import-status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+      
+      /* HaloPSA Tab Styles */
+      .halopsa-data-tabs { margin-top: 20px; }
+      .halopsa-data-tabs .tabs { margin-bottom: 0; }
+      .halopsa-tab-content { padding: 20px; border: 1px solid #ddd; border-top: none; display: none; }
+      .halopsa-tab-content.active { display: block; }
     </style>
   </head>
   <body>
@@ -53,6 +315,9 @@
           <div class="tab active" data-tab="config">Configuration</div>
           <div class="tab" data-tab="stripe">Stripe Integration</div>
           <div class="tab" data-tab="mapping">Customer Mapping</div>
+          <div class="tab" data-tab="halopsa">HaloPSA Integration</div>
+          <div class="tab" data-tab="items">QuickBooks Items</div>
+          <div class="tab" data-tab="customer">Customer View</div>
           <div class="tab" data-tab="status">System Status</div>
         </div>
         
@@ -82,139 +347,34 @@
         
         <!-- Stripe Integration Tab -->
         <div class="tab-content" id="stripe">
-          <div class="config-section">
-            <div class="config-header">
-              <h3>Stripe API Configuration</h3>
-            </div>
-            <form id="stripeConfigForm">
-              <div class="form-group">
-                <label for="stripe_secret_key">Stripe Secret Key</label>
-                <input type="password" id="stripe_secret_key" name="stripe_secret_key" placeholder="sk_live_...">
-              </div>
-              <div class="form-group">
-                <label for="stripe_webhook_secret">Webhook Secret</label>
-                <input type="password" id="stripe_webhook_secret" name="stripe_webhook_secret">
-              </div>
-              <div class="form-group">
-                <label for="stripe_sync_enabled">Enable Stripe Sync</label>
-                <select id="stripe_sync_enabled" name="stripe_sync_enabled">
-                  <option value="true">Enabled</option>
-                  <option value="false">Disabled</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="stripe_sync_interval">Sync Interval (minutes)</label>
-                <input type="number" id="stripe_sync_interval" name="stripe_sync_interval" min="5" max="1440">
-              </div>
-              <div class="actions">
-                <button type="submit" class="btn">Save Stripe Config</button>
-                <button type="button" class="btn secondary" id="testStripe">Test Connection</button>
-                <button type="button" class="btn success" id="syncStripeNow">Sync Now</button>
-              </div>
-            </form>
-          </div>
-          
-          <div class="config-section">
-            <div class="config-header">
-              <h3>Recent Stripe Transactions</h3>
-            </div>
-            <div id="stripeTransactions">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Customer</th>
-                    <th>Amount</th>
-                    <th>Status</th>
-                    <th>Mapped</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="transactionsTable">
-                  <!-- Transactions will be loaded here -->
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <!-- Stripe integration content loaded dynamically from tabs/stripe.html -->
         </div>
         
         <!-- Customer Mapping Tab -->
+        <!-- Customer Mapping Tab -->
         <div class="tab-content" id="mapping">
-          <div class="config-section">
-            <div class="config-header">
-              <h3>Customer Mapping Tool</h3>
-            </div>
-            <div class="mapping-section">
-              <div class="customer-list" id="stripeCustomers">
-                <h4>Stripe Customers</h4>
-                <!-- Stripe customers will be listed here -->
-              </div>
-              <div class="customer-list" id="haloCustomers">
-                <h4>HaloPSA Clients</h4>
-                <!-- HaloPSA clients will be listed here -->
-              </div>
-            </div>
-            <div class="actions" style="margin-top: 20px;">
-              <button class="btn" id="loadStripeCustomers">Load Stripe Customers</button>
-              <button class="btn" id="loadHaloCustomers">Load HaloPSA Clients</button>
-              <button class="btn success" id="autoMatch">Auto-match</button>
-              <button class="btn primary" id="saveMappings">Save Mappings</button>
-            </div>
-            <div id="mappingResults" style="margin-top: 20px;">
-              <!-- Auto-match results will be shown here -->
-            </div>
-          </div>
-          
-          <div class="config-section">
-            <div class="config-header">
-              <h3>Existing Mappings</h3>
-            </div>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Stripe Customer</th>
-                  <th>HaloPSA Client</th>
-                  <th>Match Type</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="mappingsTable">
-                <!-- Existing mappings will be loaded here -->
-              </tbody>
-            </table>
-          </div>
+          <!-- Customer mapping content loaded dynamically from tabs/mapping.html -->
         </div>
         
+        <!-- HaloPSA Integration Tab -->
+        <!-- HaloPSA Integration Tab -->
+        <div class="tab-content" id="halopsa">
+          <!-- HaloPSA integration content loaded dynamically from tabs/halopsa.html -->
+        </div>
+
+        <!-- QuickBooks Items Tab -->
+        <div class="tab-content" id="items">
+          <!-- Items content loaded dynamically from tabs/items.html -->
+        </div>
+
+        <!-- Customer View Tab -->
+        <div class="tab-content" id="customer">
+          <!-- Customer view content loaded dynamically from tabs/customer.html -->
+        </div>
+
         <!-- System Status Tab -->
         <div class="tab-content" id="status">
-          <div class="config-section">
-            <div class="config-header">
-              <h3>System Status</h3>
-            </div>
-            <div id="systemStatus">
-              <div class="status info">
-                <strong>QuickBooks Web Connector:</strong> <span id="qbwcStatus">Checking...</span>
-              </div>
-              <div class="status info">
-                <strong>Stripe Integration:</strong> <span id="stripeStatus">Checking...</span>
-              </div>
-              <div class="status info">
-                <strong>HaloPSA Connection:</strong> <span id="halopsaStatus">Checking...</span>
-              </div>
-              <div class="status info">
-                <strong>Database:</strong> <span id="dbStatus">Checking...</span>
-              </div>
-            </div>
-          </div>
-          
-          <div class="config-section">
-            <div class="config-header">
-              <h3>Recent Activity</h3>
-            </div>
-            <div id="activityLog">
-              <!-- Activity log will be populated here -->
-            </div>
-          </div>
+          <!-- System status content loaded dynamically from tabs/status.html -->
         </div>
       </div>
       
@@ -222,27 +382,108 @@
     </div>
 
     <script>
-      // Tab switching functionality
+      // Tab switching functionality with dynamic loading
       document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-          tab.classList.add('active');
-          document.getElementById(tab.dataset.tab).classList.add('active');
+        tab.addEventListener('click', async () => {
+          await loadTabContent(tab.dataset.tab);
         });
       });
-
-      // Configuration form handlers
-      document.getElementById('qbConfigForm').addEventListener('submit', saveQBConfig);
-      document.getElementById('stripeConfigForm').addEventListener('submit', saveStripeConfig);
       
-      // Button handlers
-      document.getElementById('testStripe').addEventListener('click', testStripeConnection);
-      document.getElementById('syncStripeNow').addEventListener('click', syncStripeTransactions);
-      document.getElementById('loadStripeCustomers').addEventListener('click', loadStripeCustomers);
-      document.getElementById('loadHaloCustomers').addEventListener('click', loadHaloCustomers);
-      document.getElementById('autoMatch').addEventListener('click', autoMatchCustomers);
-      document.getElementById('saveMappings').addEventListener('click', saveCustomerMappings);
+      // Function to load tab content
+      async function loadTabContent(tabId) {
+        const tab = document.querySelector(`[data-tab="${tabId}"]`);
+        const tabContent = document.getElementById(tabId);
+        
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        tabContent.classList.add('active');
+        
+        // Dynamically load tab content if not already loaded
+        if (!tabContent.hasAttribute('data-loaded')) {
+          try {
+            const tabFile = `tabs/${tabId}.html`;
+            const response = await fetch(tabFile);
+            
+            if (!response.ok) throw new Error(`Failed to load ${tabFile}`);
+            
+            const content = await response.text();
+            tabContent.innerHTML = content;
+            tabContent.setAttribute('data-loaded', 'true');
+            
+            // Initialize tab-specific functionality after loading
+            initializeTabContent(tabId);
+          } catch (error) {
+            console.error(`Error loading tab ${tabId}:`, error);
+            tabContent.innerHTML = `<div class="status error">Failed to load ${tabId} content: ${error.message}</div>`;
+          }
+        }
+      }
+      
+      // Load default tab on page load
+      document.addEventListener('DOMContentLoaded', async () => {
+        await loadTabContent('config');
+      });
+      
+      // Function to initialize tab-specific content
+      function initializeTabContent(tabId) {
+        switch(tabId) {
+          case 'config':
+            document.getElementById('qbConfigForm').addEventListener('submit', saveQBConfig);
+            break;
+          case 'stripe':
+            document.getElementById('stripeConfigForm').addEventListener('submit', saveStripeConfig);
+            document.getElementById('testStripe').addEventListener('click', testStripeConnection);
+            document.getElementById('importCustomers').addEventListener('click', importStripeCustomers);
+            document.getElementById('importTransactions').addEventListener('click', () => importStripeTransactions(false));
+            document.getElementById('importAllTransactions').addEventListener('click', () => importStripeTransactions(true));
+            document.getElementById('refreshCustomers').addEventListener('click', loadImportedCustomers);
+            document.getElementById('refreshTransactions').addEventListener('click', loadImportedTransactions);
+            break;
+          case 'customer':
+            initializeCustomerView();
+            break;
+          case 'halopsa':
+            document.getElementById('halopsaConfigForm').addEventListener('submit', saveHaloPSAConfig);
+            document.getElementById('testHalopsa').addEventListener('click', testHaloPSAConnection);
+            document.getElementById('importHalopsaClients').addEventListener('click', importHaloPSAClients);
+            document.getElementById('importHalopsaPurchaseOrders').addEventListener('click', importHaloPSAPurchaseOrders);
+            document.getElementById('importHalopsaInvoices').addEventListener('click', importHaloPSAInvoices);
+            break;
+          case 'items':
+            // Items tab initialization is handled by inline scripts in items.html
+            console.log('Items tab initialized');
+            break;
+          case 'mapping':
+            document.getElementById('loadStripeCustomers').addEventListener('click', loadStripeCustomers);
+            document.getElementById('loadHaloCustomers').addEventListener('click', loadHaloCustomers);
+            document.getElementById('autoMatch').addEventListener('click', autoMatchCustomers);
+            document.getElementById('saveMappings').addEventListener('click', saveCustomerMappings);
+            break;
+          case 'status':
+            // System status has no special initialization needed
+            break;
+        }
+      }
+
+      // Customer tab handlers (these are for customer sub-tabs, not main tabs)
+      document.querySelectorAll('[data-customer-tab]').forEach(tab => {
+        tab.addEventListener('click', switchCustomerTab);
+      });
+
+      // HaloPSA tab handlers
+      document.querySelectorAll('[data-halopsa-tab]').forEach(tab => {
+        tab.addEventListener('click', switchHalopsaTab);
+      });
+
+      // HaloPSA button handlers
+      document.getElementById('testHalopsa').addEventListener('click', testHalopsaConnection);
+      document.getElementById('importHalopsaClients').addEventListener('click', importHalopsaClients);
+      document.getElementById('importHalopsaPurchaseOrders').addEventListener('click', importHalopsaPurchaseOrders);
+      document.getElementById('importHalopsaInvoices').addEventListener('click', importHalopsaInvoices);
+
+      // HaloPSA form handler
+      document.getElementById('halopsaConfigForm').addEventListener('submit', saveHalopsaConfig);
 
       // Load configuration on page load
       window.addEventListener('load', loadConfiguration);
@@ -262,7 +503,8 @@
           
           // Load initial data
           loadSystemStatus();
-          loadStripeTransactions();
+          loadImportedCustomers();
+          loadImportedTransactions();
           loadCustomerMappings();
         } catch (error) {
           showStatus('Error loading configuration: ' + error.message, 'error');
@@ -319,27 +561,134 @@
         }
       }
 
-      async function loadStripeTransactions() {
+      async function importStripeCustomers() {
+        const progressContainer = document.getElementById('customerProgress');
+        const progressFill = progressContainer.querySelector('.progress-fill');
+        const progressText = document.getElementById('customerProgressText');
+        const importBtn = document.getElementById('importCustomers');
+        
+        // Show progress bar and disable button
+        progressContainer.style.display = 'block';
+        importBtn.disabled = true;
+        importBtn.textContent = 'Importing...';
+        
         try {
-          const response = await fetch('/api/stripe/transactions');
+          // For now, we'll simulate progress since WebSocket setup is complex
+          progressFill.style.width = '25%';
+          progressText.textContent = 'Connecting to Stripe...';
+          
+          const response = await fetch('/api/stripe/import/customers', { method: 'POST' });
+          const result = await response.json();
+          
+          progressFill.style.width = '100%';
+          progressText.textContent = 'Import complete!';
+          
+          setTimeout(() => {
+            progressContainer.style.display = 'none';
+            importBtn.disabled = false;
+            importBtn.textContent = 'Import Customers';
+          }, 2000);
+          
+          showStatus(result.message, result.success ? 'success' : 'error');
+          if (result.success) {
+            document.getElementById('customerStats').textContent = 
+              `Total: ${result.total} (New: ${result.imported}, Updated: ${result.updated})`;
+            loadImportedCustomers();
+          }
+        } catch (error) {
+          progressContainer.style.display = 'none';
+          importBtn.disabled = false;
+          importBtn.textContent = 'Import Customers';
+          showStatus('Error importing customers: ' + error.message, 'error');
+        }
+      }
+
+      async function importStripeTransactions(importAll = false) {
+        const buttonId = importAll ? 'importAllTransactions' : 'importTransactions';
+        const buttonText = importAll ? 'Import ALL Transactions' : 'Import New Transactions';
+        const progressContainer = document.getElementById('transactionProgress');
+        const progressFill = progressContainer.querySelector('.progress-fill');
+        const progressText = document.getElementById('transactionProgressText');
+        const importBtn = document.getElementById(buttonId);
+        
+        // Show progress bar and disable button
+        progressContainer.style.display = 'block';
+        importBtn.disabled = true;
+        importBtn.textContent = 'Importing...';
+        
+        try {
+          // For now, we'll simulate progress since WebSocket setup is complex
+          progressFill.style.width = '25%';
+          progressText.textContent = importAll ? 'Importing ALL transactions...' : 'Importing new transactions...';
+          
+          const url = importAll ? '/api/stripe/import/transactions?all=true' : '/api/stripe/import/transactions';
+          const response = await fetch(url, { method: 'POST' });
+          const result = await response.json();
+          
+          progressFill.style.width = '100%';
+          progressText.textContent = 'Import complete!';
+          
+          setTimeout(() => {
+            progressContainer.style.display = 'none';
+            importBtn.disabled = false;
+            importBtn.textContent = buttonText;
+          }, 2000);
+          
+          showStatus(result.message, result.success ? 'success' : 'error');
+          if (result.success) {
+            document.getElementById('transactionStats').textContent = 
+              `Imported: ${result.count} transactions` + (importAll ? ' (ALL historical)' : ' (new only)');
+            loadImportedTransactions();
+          }
+        } catch (error) {
+          progressContainer.style.display = 'none';
+          importBtn.disabled = false;
+          importBtn.textContent = buttonText;
+          showStatus('Error importing transactions: ' + error.message, 'error');
+        }
+      }
+
+      async function loadImportedCustomers() {
+        try {
+          const response = await fetch('/api/stripe/customers/imported');
+          const customers = await response.json();
+          const table = document.getElementById('customersTable');
+          table.innerHTML = customers.map(customer => `
+            <tr>
+              <td><strong>${customer.name || 'Unnamed Customer'}</strong></td>
+              <td>${customer.email || 'No email'}</td>
+              <td>${customer.phone || 'No phone'}</td>
+              <td>${new Date(customer.created * 1000).toLocaleDateString()}</td>
+              <td>${new Date(customer.last_sync).toLocaleDateString()}</td>
+            </tr>
+          `).join('');
+        } catch (error) {
+          console.error('Error loading imported customers:', error);
+        }
+      }
+
+      async function loadImportedTransactions() {
+        try {
+          const response = await fetch('/api/stripe/transactions/imported');
           const transactions = await response.json();
           const table = document.getElementById('transactionsTable');
           table.innerHTML = transactions.map(tx => `
             <tr>
               <td>${new Date(tx.created * 1000).toLocaleDateString()}</td>
-              <td>${tx.customer_name || tx.customer_id}</td>
-              <td>$${(tx.amount / 100).toFixed(2)}</td>
-              <td>${tx.status}</td>
-              <td>${tx.mapped_to_halo ? '✓' : '✗'}</td>
-              <td>
-                <button class="action-btn primary" onclick="mapTransaction('${tx.id}')">Map</button>
-                <button class="action-btn warning" onclick="viewDetails('${tx.id}')">Details</button>
-              </td>
+              <td>${tx.customer_name || tx.customer_id || 'No customer'}</td>
+              <td>$${(tx.amount / 100).toFixed(2)} ${tx.currency}</td>
+              <td>${tx.description || 'No description'}</td>
+              <td><span class="status ${tx.status === 'succeeded' ? 'success' : 'warning'}">${tx.status}</span></td>
             </tr>
           `).join('');
         } catch (error) {
-          console.error('Error loading transactions:', error);
+          console.error('Error loading imported transactions:', error);
         }
+      }
+
+      // Deprecated - using loadImportedTransactions instead
+      async function loadStripeTransactions() {
+        loadImportedTransactions();
       }
 
       async function loadCustomerMappings() {
@@ -393,15 +742,26 @@
           const response = await fetch('/api/stripe/customers');
           const customers = await response.json();
           const container = document.getElementById('stripeCustomers');
-          container.innerHTML = '<h4>Stripe Customers</h4>' + customers.map(customer => `
-            <div class="customer-item" data-id="${customer.id}" onclick="selectStripeCustomer(this)">
-              <strong>${customer.name || 'Unnamed Customer'}</strong><br>
-              ${customer.email || 'No email'} 
-              <span class="match-score">New</span>
-            </div>
-          `).join('');
+          
+          if (customers.length === 0) {
+            container.innerHTML = `
+              <h4>Stripe Customers</h4>
+              <div class="no-customers-message">
+                No Stripe customers found. Please import customers first using the "Import Customers" button.
+              </div>
+            `;
+          } else {
+            container.innerHTML = '<h4>Stripe Customers</h4>' + customers.map(customer => `
+              <div class="customer-item" data-id="${customer.id}" onclick="selectStripeCustomer(this)">
+                <strong>${customer.name || 'Unnamed Customer'}</strong><br>
+                ${customer.email || 'No email'} 
+                <span class="match-score">New</span>
+              </div>
+            `).join('');
+          }
         } catch (error) {
           console.error('Error loading Stripe customers:', error);
+          showStatus('Error loading Stripe customers: ' + error.message, 'error');
         }
       }
 
@@ -421,31 +781,651 @@
         }
       }
 
-      async function autoMatchCustomers() {
+      let currentPage = 1;
+      let totalPages = 1;
+      let pageSize = 50;
+      let allMatches = [];
+      let allConflicts = [];
+
+      async function autoMatchCustomers(page = 1, size = pageSize) {
         try {
-          const response = await fetch('/api/customers/automatch', { method: 'POST' });
+          const resultsDiv = document.getElementById('mappingResults');
+          resultsDiv.innerHTML = '<p><i>Scanning for matches...</i></p>';
+          
+          const response = await fetch('/api/customers/automatch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ page, pageSize: size })
+          });
+          
           const result = await response.json();
           
           if (result.success) {
-            const resultsDiv = document.getElementById('mappingResults');
-            resultsDiv.innerHTML = '<h4>Auto-match Results</h4>' + result.matches.map(match => `
-              <div style="padding: 10px; border-bottom: 1px solid #eee;">
-                <strong>${match.stripe_customer.name}</strong> → 
-                <strong>${match.halo_client.name}</strong>
-                <span style="float: right; color: #666;">Score: ${(match.match_score * 100).toFixed(1)}%</span>
-                <button class="action-btn success" onclick="confirmMapping('${match.stripe_customer.id}', '${match.halo_client.id}')">Confirm</button>
-              </div>
-            `).join('');
+            currentPage = page;
+            totalPages = result.pagination?.totalPages || 1;
+            pageSize = result.pagination?.pageSize || size;
             
-            showStatus(`Found ${result.matches.length} potential matches`, 'success');
+            // Accumulate results for batch operations
+            if (page === 1) {
+              allMatches = [...result.matches];
+              allConflicts = [...result.conflicts];
+            } else {
+              allMatches.push(...result.matches);
+              allConflicts.push(...result.conflicts);
+            }
+            
+            displayAutomatchResults(result, page);
+            
+            const performanceInfo = result.performance ? 
+              ` (${result.performance.processingTime}ms, ${result.performance.matchesPerSecond}/sec)` : '';
+              
+            showStatus(`Page ${page}/${totalPages}: ${result.matches.length} matches, ${result.conflicts.length} conflicts${performanceInfo}`, 'success');
+          } else {
+            showStatus('Auto-match failed: ' + (result.error || 'Unknown error'), 'error');
           }
         } catch (error) {
           showStatus('Error auto-matching customers: ' + error.message, 'error');
         }
       }
 
+      function displayAutomatchResults(result, page) {
+        const resultsDiv = document.getElementById('mappingResults');
+        
+        let html = `<h4>Auto-match Results - Page ${page}/${totalPages}</h4>`;
+        
+        // Pagination controls
+        html += `<div style="margin-bottom: 15px;">
+          <button class="action-btn" onclick="autoMatchCustomers(1, ${pageSize})" ${page === 1 ? 'disabled' : ''}>First</button>
+          <button class="action-btn" onclick="autoMatchCustomers(${page - 1}, ${pageSize})" ${page === 1 ? 'disabled' : ''}>Previous</button>
+          <span style="margin: 0 10px;">Page ${page} of ${totalPages}</span>
+          <button class="action-btn" onclick="autoMatchCustomers(${page + 1}, ${pageSize})" ${page >= totalPages ? 'disabled' : ''}>Next</button>
+          <button class="action-btn" onclick="autoMatchCustomers(${totalPages}, ${pageSize})" ${page >= totalPages ? 'disabled' : ''}>Last</button>
+          <select onchange="changePageSize(this.value)" style="margin-left: 10px;">
+            <option value="25" ${pageSize === 25 ? 'selected' : ''}>25 per page</option>
+            <option value="50" ${pageSize === 50 ? 'selected' : ''}>50 per page</option>
+            <option value="100" ${pageSize === 100 ? 'selected' : ''}>100 per page</option>
+            <option value="200" ${pageSize === 200 ? 'selected' : ''}>200 per page</option>
+          </select>
+        </div>`;
+        
+        // Batch operations
+        if (allMatches.length > 0) {
+          html += `<div style="margin-bottom: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px;">
+            <strong>Batch Operations:</strong>
+            <button class="action-btn success" onclick="batchConfirmAll()">Confirm All ${allMatches.length} Matches</button>
+            <span style="margin-left: 10px; color: #666;">Total accumulated: ${allMatches.length} matches, ${allConflicts.length} conflicts</span>
+          </div>`;
+        }
+        
+        // Matches
+        if (result.matches.length > 0) {
+          html += `<h5>Clean Matches (${result.matches.length})</h5>`;
+          html += result.matches.map(match => `
+            <div style="padding: 10px; border-bottom: 1px solid #eee;">
+              <strong>${match.stripe_customer.name}</strong> → 
+              <strong>${match.halo_client.name}</strong>
+              <span style="float: right; color: #666;">Score: ${(match.match_score * 100).toFixed(1)}%</span>
+              <button class="action-btn success" onclick="confirmMapping('${match.stripe_customer.stripe_id}', '${match.halo_client.halopsa_id}')">Confirm</button>
+            </div>
+          `).join('');
+        }
+        
+        // Conflicts
+        if (result.conflicts.length > 0) {
+          html += `<h5>Conflicts - Needs Review (${result.conflicts.length})</h5>`;
+          html += result.conflicts.map(conflict => `
+            <div style="padding: 10px; border-bottom: 1px solid #eee; background: #fff3cd;">
+              <strong>${conflict.stripe_customer.name}</strong> has multiple matches:
+              ${conflict.potential_matches.slice(0, 3).map((match, idx) => `
+                <div style="margin-left: 20px; margin-top: 5px;">
+                  ${idx + 1}. <strong>${match.halo_client.name}</strong> 
+                  <span style="color: #666;">(Score: ${(match.score * 100).toFixed(1)}%)</span>
+                  <button class="action-btn warning" onclick="confirmMapping('${conflict.stripe_customer.stripe_id}', '${match.halo_client.halopsa_id}')">Select</button>
+                </div>
+              `).join('')}
+            </div>
+          `).join('');
+        }
+        
+        if (result.matches.length === 0 && result.conflicts.length === 0) {
+          html += '<p><i>No matches found on this page. Try adjusting the threshold or check next pages.</i></p>';
+        }
+        
+        resultsDiv.innerHTML = html;
+      }
+
+      function changePageSize(newSize) {
+        pageSize = parseInt(newSize);
+        autoMatchCustomers(1, pageSize);
+      }
+
+      async function batchConfirmAll() {
+        if (allMatches.length === 0) {
+          showStatus('No matches to confirm', 'warning');
+          return;
+        }
+        
+        try {
+          showStatus(`Confirming ${allMatches.length} matches...`, 'info');
+          
+          const mappings = allMatches.map(match => ({
+            stripe_customer_id: match.stripe_customer.stripe_id,
+            halopsa_client_id: match.halo_client.halopsa_id,
+            auto_mapped: true,
+            mapping_confirmed: true
+          }));
+          
+          const response = await fetch('/api/customers/mappings/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mappings, batch: true })
+          });
+          
+          const result = await response.json();
+          
+          if (result.success) {
+            const successful = result.results.filter(r => r.success).length;
+            showStatus(`Batch confirmation complete: ${successful}/${allMatches.length} successful`, 'success');
+            
+            // Reset for next batch
+            allMatches = [];
+            allConflicts = [];
+            
+            // Reload current page to show updated state
+            autoMatchCustomers(currentPage, pageSize);
+          } else {
+            showStatus('Batch confirmation failed', 'error');
+          }
+        } catch (error) {
+          showStatus('Error during batch confirmation: ' + error.message, 'error');
+        }
+      }
+
       async function saveCustomerMappings() {
         showStatus('Manual mapping save functionality coming soon', 'info');
+      }
+
+      // Enhanced Customer View Functions
+      let currentCustomerPage = 1;
+      let currentCustomerPageSize = 20;
+      let currentCustomerSearch = '';
+      let currentCustomerFilter = 'all';
+
+      // Initialize customer view when tab is shown
+      function initializeCustomerView() {
+        console.log('Customer tab initialized - loading customer list');
+        
+        // Test if basic elements exist
+        const testElements = ['customerListContent', 'customerSearch', 'customerFilter', 'refreshCustomers'];
+        testElements.forEach(id => {
+          const element = document.getElementById(id);
+          console.log(`Element ${id}:`, element ? 'FOUND' : 'NOT FOUND');
+        });
+        
+        // Simple fallback test
+        const container = document.getElementById('customerListContent');
+        if (container) {
+          container.innerHTML = '<p><strong>Testing:</strong> Customer view is initializing...</p>';
+          
+          // Load customer list after a brief delay to show the test message
+          setTimeout(() => {
+            loadCustomerList();
+          }, 100);
+        } else {
+          console.error('Customer list container not found!');
+          // Create a fallback message
+          const customerTab = document.querySelector('.tab-content#customer');
+          if (customerTab) {
+            customerTab.innerHTML = '<div class="error-message"><p>Customer view initialization failed. Please check the console for errors.</p></div>';
+          }
+        }
+        
+        // Set up event listeners (with error handling)
+        try {
+          const searchElement = document.getElementById('customerSearch');
+          if (searchElement) {
+            searchElement.addEventListener('input', (e) => {
+              loadCustomerList(1, e.target.value, currentCustomerFilter);
+            });
+          }
+          
+          const filterElement = document.getElementById('customerFilter');
+          if (filterElement) {
+            filterElement.addEventListener('change', (e) => {
+              loadCustomerList(1, currentCustomerSearch, e.target.value);
+            });
+          }
+          
+          const refreshElement = document.getElementById('refreshCustomers');
+          if (refreshElement) {
+            refreshElement.addEventListener('click', () => {
+              loadCustomerList(currentCustomerPage, currentCustomerSearch, currentCustomerFilter);
+            });
+          }
+          
+          const prevElement = document.getElementById('prevPage');
+          if (prevElement) {
+            prevElement.addEventListener('click', () => {
+              if (currentCustomerPage > 1) {
+                loadCustomerList(currentCustomerPage - 1, currentCustomerSearch, currentCustomerFilter);
+              }
+            });
+          }
+          
+          const nextElement = document.getElementById('nextPage');
+          if (nextElement) {
+            nextElement.addEventListener('click', () => {
+              loadCustomerList(currentCustomerPage + 1, currentCustomerSearch, currentCustomerFilter);
+            });
+          }
+          
+          const backElement = document.getElementById('backToList');
+          if (backElement) {
+            backElement.addEventListener('click', backToCustomerList);
+          }
+          
+          const refreshDataElement = document.getElementById('refreshCustomerData');
+          if (refreshDataElement) {
+            refreshDataElement.addEventListener('click', () => {
+              const currentClientId = document.getElementById('customerDetail').dataset.clientId;
+              if (currentClientId) {
+                viewCustomerDetail(currentClientId);
+              }
+            });
+          }
+          
+          // Set up customer tab switching
+          document.querySelectorAll('.customer-tabs .tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+              const tabName = this.getAttribute('data-customer-tab');
+              switchCustomerViewTab(tabName);
+            });
+          });
+        } catch (error) {
+          console.error('Error setting up event listeners:', error);
+        }
+      }
+
+      // Load customer list with search and pagination
+      async function loadCustomerList(page = 1, search = '', filter = 'all') {
+        try {
+          console.log('Loading customer list - page:', page, 'search:', search, 'filter:', filter);
+          showStatus('Loading customers...', 'info');
+          
+          const response = await fetch(`/api/customers/overview?page=${page}&pageSize=${currentCustomerPageSize}&search=${encodeURIComponent(search)}`);
+          console.log('API response status:', response.status);
+          
+          const result = await response.json();
+          console.log('API response data:', result);
+          
+          if (result.success) {
+            console.log('Successfully loaded', result.customers.length, 'customers');
+            displayCustomerList(result.customers, result.pagination);
+            currentCustomerPage = page;
+            currentCustomerSearch = search;
+            currentCustomerFilter = filter;
+          } else {
+            console.error('API returned error:', result.error);
+            showStatus('Failed to load customers', 'error');
+          }
+        } catch (error) {
+          console.error('Error loading customer list:', error);
+          showStatus('Error loading customers: ' + error.message, 'error');
+        }
+      }
+
+      // Display customer list as cards
+      function displayCustomerList(customers, pagination) {
+        console.log('Displaying customer list - customers:', customers.length, 'container:', document.getElementById('customerListContent'));
+        const container = document.getElementById('customerListContent');
+        
+        if (!container) {
+          console.error('Customer list container not found!');
+          return;
+        }
+        
+        if (customers.length === 0) {
+          container.innerHTML = '<div class="no-customers"><p>No customers found matching your criteria.</p></div>';
+          console.log('No customers to display');
+          return;
+        }
+        
+        const html = customers.map(customer => `
+          <div class="customer-card" data-client-id="${customer.halopsa_id}">
+            <div class="customer-card-header">
+              <h3>${customer.name}</h3>
+              <div class="customer-badges">
+                ${customer.mapping_confirmed ? '<span class="badge success">Mapped</span>' : '<span class="badge warning">Not Mapped</span>'}
+                ${customer.stripe_invoice_count > 0 ? `<span class="badge info">${customer.stripe_invoice_count} Invoices</span>` : ''}
+                ${customer.halopsa_transaction_count > 0 ? `<span class="badge primary">${customer.halopsa_transaction_count} Transactions</span>` : ''}
+              </div>
+            </div>
+            <div class="customer-card-body">
+              <div class="customer-info">
+                <p><strong>Email:</strong> ${customer.email || 'Not provided'}</p>
+                <p><strong>Phone:</strong> ${customer.phone || 'Not provided'}</p>
+                ${customer.address ? `<p><strong>Address:</strong> ${customer.address}</p>` : ''}
+              </div>
+              <div class="customer-stats">
+                <div class="stat">
+                  <span class="stat-number">${customer.stripe_invoice_count || 0}</span>
+                  <span class="stat-label">Stripe Invoices</span>
+                </div>
+                <div class="stat">
+                  <span class="stat-number">${customer.halopsa_transaction_count || 0}</span>
+                  <span class="stat-label">HaloPSA Transactions</span>
+                </div>
+              </div>
+            </div>
+            <div class="customer-card-actions">
+              <button class="btn small primary" onclick="viewCustomerDetail('${customer.halopsa_id}')">View Details</button>
+              ${customer.mapping_confirmed ? 
+                `<button class="btn small warning" onclick="editCustomerMapping('${customer.halopsa_id}')">Edit Mapping</button>` :
+                `<button class="btn small success" onclick="setupCustomerMapping('${customer.halopsa_id}')">Map to Stripe</button>`
+              }
+            </div>
+          </div>
+        `).join('');
+        
+        container.innerHTML = html;
+        
+        // Update pagination info
+        document.getElementById('customerPaginationInfo').textContent = 
+          `Page ${pagination.page} of ${pagination.totalPages} (${pagination.total} total customers)`;
+        
+        document.getElementById('prevPage').disabled = pagination.page <= 1;
+        document.getElementById('nextPage').disabled = pagination.page >= pagination.totalPages;
+      }
+
+      // View detailed customer information
+      async function viewCustomerDetail(halopsaClientId) {
+        try {
+          showStatus('Loading customer details...', 'info');
+          
+          const response = await fetch(`/api/customers/view/${halopsaClientId}`);
+          const result = await response.json();
+          
+          if (result.success) {
+            displayCustomerDetail(result.customer);
+            document.getElementById('customerList').style.display = 'none';
+            document.getElementById('customerDetail').style.display = 'block';
+            document.getElementById('customerDetail').dataset.clientId = halopsaClientId;
+          } else {
+            showStatus('Failed to load customer details', 'error');
+          }
+        } catch (error) {
+          console.error('Error loading customer details:', error);
+          showStatus('Error loading customer details: ' + error.message, 'error');
+        }
+      }
+
+      // Display detailed customer information
+      function displayCustomerDetail(customer) {
+        const haloClient = customer.halo_client;
+        
+        // Basic customer info
+        document.getElementById('customerName').textContent = haloClient.name;
+        document.getElementById('customerEmail').textContent = haloClient.email || 'Not provided';
+        document.getElementById('customerPhone').textContent = haloClient.phone || 'Not provided';
+        document.getElementById('customerAddress').textContent = haloClient.address || 'Not provided';
+        document.getElementById('customerSince').textContent = new Date(haloClient.created_at).toLocaleDateString();
+        
+        // Mapping badge
+        const mappedBadge = document.getElementById('customerMappedBadge');
+        if (customer.stripe_mapping) {
+          mappedBadge.style.display = 'inline';
+          mappedBadge.textContent = `Mapped to: ${customer.stripe_mapping.stripe_customer_name}`;
+        } else {
+          mappedBadge.style.display = 'none';
+        }
+        
+        // Statistics
+        document.getElementById('statInvoices').textContent = customer.summary.total_invoices;
+        document.getElementById('statTransactions').textContent = customer.summary.total_transactions;
+        document.getElementById('statPurchaseOrders').textContent = customer.summary.total_purchase_orders;
+        document.getElementById('statItems').textContent = customer.summary.total_items;
+        
+        // Populate tab content
+        populateStripeTab(customer);
+        populateHaloPSATab(customer);
+        populatePurchaseOrdersTab(customer);
+        populateItemsTab(customer);
+        populateMappingTab(customer);
+      }
+
+      // Populate Stripe data tab
+      function populateStripeTab(customer) {
+        const container = document.getElementById('stripeTransactions');
+        
+        if (!customer.stripe_mapping) {
+          container.innerHTML = '<p class="no-data">Customer not mapped to Stripe</p>';
+          return;
+        }
+        
+        if (customer.transactions.stripe.length === 0) {
+          container.innerHTML = '<p class="no-data">No Stripe transactions found</p>';
+          return;
+        }
+        
+        const html = `
+          <div class="stripe-info">
+            <p><strong>Stripe Customer:</strong> ${customer.stripe_mapping.stripe_customer_name} (${customer.stripe_mapping.stripe_customer_email})</p>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Invoice</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${customer.transactions.stripe.map(transaction => `
+                <tr>
+                  <td>${new Date(transaction.created).toLocaleDateString()}</td>
+                  <td>$${transaction.amount}</td>
+                  <td><span class="status ${transaction.status}">${transaction.status}</span></td>
+                  <td>${transaction.invoice_id}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+        
+        container.innerHTML = html;
+        
+        // Update Stripe customer info
+        document.getElementById('stripeCustomerInfo').textContent = 
+          `Linked to: ${customer.stripe_mapping.stripe_customer_name}`;
+      }
+
+      // Populate HaloPSA transactions tab
+      function populateHaloPSATab(customer) {
+        const container = document.getElementById('halopsaTransactions');
+        
+        if (customer.transactions.halopsa.length === 0) {
+          container.innerHTML = '<p class="no-data">No HaloPSA transactions found</p>';
+          return;
+        }
+        
+        const html = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Description</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${customer.transactions.halopsa.map(transaction => `
+                <tr>
+                  <td>${new Date(transaction.date).toLocaleDateString()}</td>
+                  <td>${transaction.type}</td>
+                  <td>$${transaction.amount}</td>
+                  <td>${transaction.description}</td>
+                  <td><span class="status ${transaction.status}">${transaction.status}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+        
+        container.innerHTML = html;
+      }
+
+      // Populate purchase orders tab
+      function populatePurchaseOrdersTab(customer) {
+        const container = document.getElementById('purchaseOrders');
+        
+        if (customer.purchase_orders.length === 0) {
+          container.innerHTML = '<p class="no-data">No purchase orders found</p>';
+          return;
+        }
+        
+        const html = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>PO Number</th>
+                <th>Vendor</th>
+                <th>Amount</th>
+                <th>Created</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${customer.purchase_orders.map(po => `
+                <tr>
+                  <td>${po.po_number}</td>
+                  <td>${po.vendor}</td>
+                  <td>$${po.amount}</td>
+                  <td>${new Date(po.created_at).toLocaleDateString()}</td>
+                  <td><span class="status ${po.status}">${po.status}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+        
+        container.innerHTML = html;
+      }
+
+      // Populate service items tab
+      function populateItemsTab(customer) {
+        const container = document.getElementById('serviceItems');
+        
+        if (customer.items.length === 0) {
+          container.innerHTML = '<p class="no-data">No service items found</p>';
+          return;
+        }
+        
+        const html = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Item Name</th>
+                <th>Type</th>
+                <th>Last Used</th>
+                <th>Usage Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${customer.items.map(item => `
+                <tr>
+                  <td>${item.item_name}</td>
+                  <td>${item.item_type}</td>
+                  <td>${item.last_used ? new Date(item.last_used).toLocaleDateString() : 'Never'}</td>
+                  <td>${item.usage_count}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+        
+        container.innerHTML = html;
+      }
+
+      // Populate mapping tab
+      function populateMappingTab(customer) {
+        const container = document.getElementById('mappingSettings');
+        
+        const html = `
+          <div class="mapping-info">
+            ${customer.stripe_mapping ? `
+              <div class="mapping-status mapped">
+                <h4>✅ Customer Mapped to Stripe</h4>
+                <p><strong>Stripe Customer:</strong> ${customer.stripe_mapping.stripe_customer_name}</p>
+                <p><strong>Stripe Email:</strong> ${customer.stripe_mapping.stripe_customer_email}</p>
+                <p><strong>Mapped On:</strong> ${new Date(customer.stripe_mapping.created_at).toLocaleDateString()}</p>
+                <button class="btn warning" onclick="editCustomerMapping('${customer.halo_client.halopsa_id}')">Edit Mapping</button>
+                <button class="btn danger" onclick="removeCustomerMapping('${customer.halo_client.halopsa_id}')">Remove Mapping</button>
+              </div>
+            ` : `
+              <div class="mapping-status unmapped">
+                <h4>❌ Customer Not Mapped</h4>
+                <p>This HaloPSA client is not mapped to any Stripe customer.</p>
+                <button class="btn success" onclick="setupCustomerMapping('${customer.halo_client.halopsa_id}')">Map to Stripe</button>
+              </div>
+            `}
+          </div>
+        `;
+        
+        container.innerHTML = html;
+      }
+
+      // Switch customer tabs (renamed to avoid conflict)
+      function switchCustomerViewTab(tabName) {
+        // Hide all tab contents
+        document.querySelectorAll('.customer-tab-content').forEach(content => {
+          content.classList.remove('active');
+        });
+        
+        // Remove active class from all tabs
+        document.querySelectorAll('.customer-tabs .tab').forEach(tab => {
+          tab.classList.remove('active');
+        });
+        
+        // Show selected tab content and activate tab
+        document.getElementById(`customer-${tabName}`).classList.add('active');
+        document.querySelector(`.customer-tabs .tab[data-customer-tab="${tabName}"]`).classList.add('active');
+      }
+
+      // Navigation functions
+      function backToCustomerList() {
+        document.getElementById('customerDetail').style.display = 'none';
+        document.getElementById('customerList').style.display = 'block';
+      }
+
+      function setupCustomerMapping(halopsaClientId) {
+        showStatus('Mapping setup would open a modal for selecting Stripe customers', 'info');
+      }
+
+      function editCustomerMapping(halopsaClientId) {
+        showStatus('Edit mapping would allow changing the Stripe customer mapping', 'info');
+      }
+
+      function removeCustomerMapping(halopsaClientId) {
+        if (confirm('Are you sure you want to remove this customer mapping? This will disconnect the HaloPSA client from the Stripe customer.')) {
+          // Call API to remove mapping
+          fetch(`/api/customers/mappings/${halopsaClientId}`, { method: 'DELETE' })
+            .then(response => response.json())
+            .then(result => {
+              if (result.success) {
+                showStatus('Customer mapping removed successfully', 'success');
+                // Refresh the customer detail view
+                viewCustomerDetail(halopsaClientId);
+              } else {
+                showStatus('Failed to remove mapping: ' + result.error, 'error');
+              }
+            })
+            .catch(error => {
+              showStatus('Error removing mapping: ' + error.message, 'error');
+            });
+        }
       }
 
       function selectStripeCustomer(element) {
@@ -514,6 +1494,316 @@
           } catch (error) {
             showStatus('Error deleting mapping: ' + error.message, 'error');
           }
+        }
+      }
+
+      // Old customer view functions removed - using new enhanced customer view instead
+
+      // Old customer transaction function removed - using new enhanced customer view instead
+
+      function switchCustomerTab(event) {
+        const tab = event.target;
+        const tabName = tab.dataset.customerTab;
+        
+        // Remove active class from all tabs and contents
+        document.querySelectorAll('[data-customer-tab]').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.customer-tab-content').forEach(c => c.classList.remove('active'));
+        
+        // Add active class to clicked tab and corresponding content
+        tab.classList.add('active');
+        document.getElementById(`customer-${tabName}`).classList.add('active');
+      }
+
+      // Populate customer dropdown on page load
+      async function populateCustomerDropdown() {
+        try {
+          const response = await fetch('/api/stripe/customers/imported');
+          const customers = await response.json();
+          
+          const select = document.getElementById('customerSelect');
+          select.innerHTML = '<option value="">-- Choose a customer --</option>' + 
+            customers.map(customer => `
+              <option value="${customer.stripe_id}">
+                ${customer.name || 'Unnamed Customer'} (${customer.email || 'No email'})
+              </option>
+            `).join('');
+            
+        } catch (error) {
+          console.error('Error populating customer dropdown:', error);
+        }
+      }
+
+      // HaloPSA Functions
+      async function testHalopsaConnection() {
+        try {
+          const response = await fetch('/api/halopsa/test');
+          const result = await response.json();
+          showStatus(result.message, result.success ? 'success' : 'error');
+        } catch (error) {
+          showStatus('Error testing HaloPSA connection: ' + error.message, 'error');
+        }
+      }
+
+      async function importHalopsaClients() {
+        const progressContainer = document.getElementById('halopsaClientProgress');
+        const progressFill = progressContainer.querySelector('.progress-fill');
+        const progressText = document.getElementById('halopsaClientProgressText');
+        const importBtn = document.getElementById('importHalopsaClients');
+        
+        progressContainer.style.display = 'block';
+        importBtn.disabled = true;
+        importBtn.textContent = 'Importing...';
+        
+        try {
+          progressFill.style.width = '25%';
+          progressText.textContent = 'Connecting to HaloPSA...';
+          
+          const response = await fetch('/api/halopsa/import/clients', { method: 'POST' });
+          const result = await response.json();
+          
+          progressFill.style.width = '100%';
+          progressText.textContent = `Imported ${result.count || 0} clients`;
+          
+          setTimeout(() => {
+            progressContainer.style.display = 'none';
+            importBtn.disabled = false;
+            importBtn.textContent = 'Import HaloPSA Clients';
+          }, 2000);
+          
+          showStatus(result.message, result.success ? 'success' : 'error');
+          if (result.success) {
+            loadHalopsaClients();
+          }
+        } catch (error) {
+          progressContainer.style.display = 'none';
+          importBtn.disabled = false;
+          importBtn.textContent = 'Import HaloPSA Clients';
+          showStatus('Error importing HaloPSA clients: ' + error.message, 'error');
+        }
+      }
+
+      async function importHalopsaPurchaseOrders() {
+        const progressContainer = document.getElementById('halopsaPurchaseOrderProgress');
+        const progressFill = progressContainer.querySelector('.progress-fill');
+        const progressText = document.getElementById('halopsaPurchaseOrderProgressText');
+        const importBtn = document.getElementById('importHalopsaPurchaseOrders');
+        
+        progressContainer.style.display = 'block';
+        importBtn.disabled = true;
+        importBtn.textContent = 'Importing...';
+        
+        try {
+          progressFill.style.width = '25%';
+          progressText.textContent = 'Fetching purchase order report...';
+          
+          const response = await fetch('/api/halopsa/import/purchase-orders', { method: 'POST' });
+          const result = await response.json();
+          
+          progressFill.style.width = '100%';
+          progressText.textContent = `Imported ${result.imported || 0} purchase orders, updated ${result.updated || 0}`;
+          
+          setTimeout(() => {
+            progressContainer.style.display = 'none';
+            importBtn.disabled = false;
+            importBtn.textContent = 'Import Purchase Orders';
+          }, 2000);
+          
+          showStatus(result.message, result.success ? 'success' : 'error');
+          if (result.success) {
+            loadHalopsaPurchaseOrders();
+          }
+        } catch (error) {
+          progressContainer.style.display = 'none';
+          importBtn.disabled = false;
+          importBtn.textContent = 'Import Purchase Orders';
+          showStatus('Error importing purchase orders: ' + error.message, 'error');
+        }
+      }
+
+      async function importHalopsaInvoices() {
+        const progressContainer = document.getElementById('halopsaInvoiceProgress');
+        const progressFill = progressContainer.querySelector('.progress-fill');
+        const progressText = document.getElementById('halopsaInvoiceProgressText');
+        const importBtn = document.getElementById('importHalopsaInvoices');
+        
+        progressContainer.style.display = 'block';
+        importBtn.disabled = true;
+        importBtn.textContent = 'Importing...';
+        
+        try {
+          progressFill.style.width = '25%';
+          progressText.textContent = 'Fetching invoice report...';
+          
+          const response = await fetch('/api/halopsa/import/invoices', { method: 'POST' });
+          const result = await response.json();
+          
+          progressFill.style.width = '100%';
+          progressText.textContent = `Imported ${result.imported || 0} invoices, updated ${result.updated || 0}`;
+          
+          setTimeout(() => {
+            progressContainer.style.display = 'none';
+            importBtn.disabled = false;
+            importBtn.textContent = 'Import Invoices';
+          }, 2000);
+          
+          showStatus(result.message, result.success ? 'success' : 'error');
+          if (result.success) {
+            loadHalopsaInvoices();
+          }
+        } catch (error) {
+          progressContainer.style.display = 'none';
+          importBtn.disabled = false;
+          importBtn.textContent = 'Import Invoices';
+          showStatus('Error importing invoices: ' + error.message, 'error');
+        }
+      }
+
+      async function saveHalopsaConfig(e) {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const config = Object.fromEntries(formData);
+        
+        try {
+          const response = await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+          });
+          
+          if (response.ok) {
+            showStatus('HaloPSA configuration saved successfully', 'success');
+          } else {
+            throw new Error('Failed to save HaloPSA configuration');
+          }
+        } catch (error) {
+          showStatus('Error saving HaloPSA configuration: ' + error.message, 'error');
+        }
+      }
+
+      function switchHalopsaTab(event) {
+        const tab = event.target;
+        const tabName = tab.dataset.halopsaTab;
+        
+        // Remove active class from all tabs and contents
+        document.querySelectorAll('[data-halopsa-tab]').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.halopsa-tab-content').forEach(c => c.classList.remove('active'));
+        
+        // Add active class to clicked tab and corresponding content
+        tab.classList.add('active');
+        document.getElementById(`halopsa-${tabName}`).classList.add('active');
+      }
+
+      // HaloPSA Data Loading Functions
+      async function loadHalopsaClients() {
+        try {
+          const response = await fetch('/api/halopsa/clients');
+          const clients = await response.json();
+          
+          const table = document.getElementById('halopsaClientsTable');
+          if (table && clients.length > 0) {
+            table.innerHTML = clients.slice(0, 50).map(client => `
+              <tr>
+                <td>${client.name || 'N/A'}</td>
+                <td>${client.email || 'N/A'}</td>
+                <td>${client.phone || 'N/A'}</td>
+                <td>${client.created ? new Date(client.created).toLocaleDateString() : 'N/A'}</td>
+                <td>${client.id || 'N/A'}</td>
+              </tr>
+            `).join('');
+          } else if (table) {
+            table.innerHTML = '<tr><td colspan="5">No HaloPSA clients found</td></tr>';
+          }
+        } catch (error) {
+          console.error('Error loading HaloPSA clients:', error);
+          const table = document.getElementById('halopsaClientsTable');
+          if (table) {
+            table.innerHTML = '<tr><td colspan="5">Error loading clients</td></tr>';
+          }
+        }
+      }
+
+      async function loadHalopsaPurchaseOrders() {
+        try {
+          const response = await fetch('/api/halopsa/reports/purchase-orders');
+          const result = await response.json();
+          
+          const table = document.getElementById('halopsaPurchaseOrdersTable');
+          if (result.success) {
+            if (result.data && table) {
+              // This would need to be customized based on actual report structure
+              table.innerHTML = '<tr><td colspan="5">Purchase order data structure needs customization</td></tr>';
+            } else {
+              table.innerHTML = '<tr><td colspan="5">No purchase orders found or report not configured</td></tr>';
+            }
+          } else {
+            table.innerHTML = `<tr><td colspan="5">${result.message}</td></tr>`;
+          }
+        } catch (error) {
+          console.error('Error loading HaloPSA purchase orders:', error);
+          const table = document.getElementById('halopsaPurchaseOrdersTable');
+          if (table) {
+            table.innerHTML = '<tr><td colspan="5">Error loading purchase orders</td></tr>';
+          }
+        }
+      }
+
+      async function loadHalopsaInvoices() {
+        try {
+          const response = await fetch('/api/halopsa/reports/invoices');
+          const result = await response.json();
+          
+          const table = document.getElementById('halopsaInvoicesTable');
+          if (result.success) {
+            if (result.data && table) {
+              // This would need to be customized based on actual report structure
+              table.innerHTML = '<tr><td colspan="6">Invoice data structure needs customization</td></tr>';
+            } else {
+              table.innerHTML = '<tr><td colspan="6">No invoices found or report not configured</td></tr>';
+            }
+          } else {
+            table.innerHTML = `<tr><td colspan="6">${result.message}</td></tr>`;
+          }
+        } catch (error) {
+          console.error('Error loading HaloPSA invoices:', error);
+          const table = document.getElementById('halopsaInvoicesTable');
+          if (table) {
+            table.innerHTML = '<tr><td colspan="6">Error loading invoices</td></tr>';
+          }
+        }
+      }
+
+      // Load HaloPSA data when tab is activated
+      document.querySelector('[data-tab="halopsa"]').addEventListener('click', () => {
+        loadHalopsaClients();
+      });
+
+      // Initialize customer view when tab is activated
+      document.querySelector('[data-tab="customer"]').addEventListener('click', () => {
+        initializeCustomerView();
+      });
+
+      // Update configuration loading to include customer dropdown
+      async function loadConfiguration() {
+        try {
+          const response = await fetch('/api/config');
+          const config = await response.json();
+          
+          // Populate form fields
+          Object.keys(config).forEach(key => {
+            const element = document.getElementById(key);
+            if (element) {
+              element.value = config[key];
+            }
+          });
+          
+          // Load initial data
+          loadSystemStatus();
+          loadImportedCustomers();
+          loadImportedTransactions();
+          loadCustomerMappings();
+          populateCustomerDropdown(); // Add this line
+        } catch (error) {
+          showStatus('Error loading configuration: ' + error.message, 'error');
         }
       }
     </script>

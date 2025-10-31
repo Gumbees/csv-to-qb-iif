@@ -1,7 +1,37 @@
-csv-to-qb-iif (Web + Docker)
-=============================
+csv-to-qb-iif (Electron Desktop App + Web APIs)
+=================================================
 
-Centralized web application to convert CSV exports into QuickBooks IIF Bills, with inventory tracking and export history. Runs in Docker with PostgreSQL.
+Desktop application to convert CSV exports into QuickBooks IIF Bills, with customer mapping and HaloPSA integration. Runs as an Electron app with SQLite database.
+
+## 🚀 Quick Start
+
+### Windows (Recommended)
+1. Double-click `start-application.bat`
+2. This will automatically:
+   - Start the API server on port 3000
+   - Launch the Electron desktop application
+
+### Manual Start
+If the batch file doesn't work, start manually:
+
+1. **Terminal 1 - Start API Server:**
+   ```bash
+   node src/server.js
+   ```
+
+2. **Terminal 2 - Start Electron App:**
+   ```bash
+   electron .
+   ```
+
+3. The Electron application window should open automatically with the Customer View tab.
+
+### Important Notes
+- This is an **Electron desktop application**, not a web app
+- The server (port 3000) provides API endpoints only
+- The frontend is served by Electron, not through a web browser
+- Customer View tab requires both processes to be running
+- If you see HaloPSA API docs, you're accessing the wrong URL
 
 Features
 --------

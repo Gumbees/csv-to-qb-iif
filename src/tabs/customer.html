@@ -1,0 +1,163 @@
+<div class="tab-content" id="customer">
+  <div class="config-section">
+    <div class="config-header">
+      <h3>HaloPSA Customer Management <span class="badge info">Source of Truth</span></h3>
+    </div>
+    
+    <!-- Customer Search and Filter -->
+    <div class="customer-controls">
+      <div class="form-group">
+        <label for="customerSearch">Search Customers:</label>
+        <input type="text" id="customerSearch" placeholder="Search by name, email, or ID..." class="customer-search">
+      </div>
+      <div class="filter-group">
+        <label>Filter by:</label>
+        <select id="customerFilter" class="customer-filter">
+          <option value="all">All Customers</option>
+          <option value="mapped">Mapped to Stripe</option>
+          <option value="unmapped">Not Mapped</option>
+          <option value="with-invoices">Has Invoices</option>
+          <option value="with-orders">Has Purchase Orders</option>
+        </select>
+      </div>
+      <button class="btn primary" id="refreshCustomers">Refresh</button>
+    </div>
+    
+    <!-- Customer List -->
+    <div id="customerList">
+      <div class="customer-list-header">
+        <h4>HaloPSA Clients</h4>
+        <div class="pagination-controls">
+          <span id="customerPaginationInfo">Loading...</span>
+          <button class="btn small" id="prevPage">Previous</button>
+          <button class="btn small" id="nextPage">Next</button>
+        </div>
+      </div>
+      <div id="customerListContent" class="customer-list-content">
+        <!-- Customer cards will be populated here -->
+      </div>
+    </div>
+    
+    <!-- Customer Detail View -->
+    <div id="customerDetail" style="display: none;">
+      <div class="customer-header">
+        <div class="customer-badge">
+          <span class="badge primary">HaloPSA Client</span>
+          <span id="customerMappedBadge" class="badge success" style="display: none;">Mapped to Stripe</span>
+        </div>
+        <h2 id="customerName">Customer Name</h2>
+        <div class="customer-meta">
+          <span id="customerEmail">Email</span> • 
+          <span id="customerPhone">Phone</span> • 
+          <span id="customerSince">Member Since</span> •
+          <span id="customerAddress">Address</span>
+        </div>
+      </div>
+      
+      <!-- Quick Stats -->
+      <div class="customer-stats">
+        <div class="stat-card">
+          <div class="stat-value" id="statInvoices">0</div>
+          <div class="stat-label">Stripe Invoices</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statTransactions">0</div>
+          <div class="stat-label">HaloPSA Transactions</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statPurchaseOrders">0</div>
+          <div class="stat-label">Purchase Orders</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statItems">0</div>
+          <div class="stat-label">Service Items</div>
+        </div>
+      </div>
+      
+      <!-- Customer Tabs -->
+      <div class="customer-tabs">
+        <div class="tabs">
+          <div class="tab active" data-customer-tab="overview">Overview</div>
+          <div class="tab" data-customer-tab="stripe">Stripe Data</div>
+          <div class="tab" data-customer-tab="halopsa">HaloPSA Transactions</div>
+          <div class="tab" data-customer-tab="purchase-orders">Purchase Orders</div>
+          <div class="tab" data-customer-tab="items">Service Items</div>
+          <div class="tab" data-customer-tab="mapping">Mapping Settings</div>
+        </div>
+        
+        <!-- Overview Tab -->
+        <div class="customer-tab-content active" id="customer-overview">
+          <div class="overview-grid">
+            <div class="overview-card">
+              <h4>Recent Activity</h4>
+              <div id="recentActivity">
+                <p class="no-data">Loading activity data...</p>
+              </div>
+            </div>
+            <div class="overview-card">
+              <h4>Financial Summary</h4>
+              <div id="financialSummary">
+                <p class="no-data">Loading financial data...</p>
+              </div>
+            </div>
+            <div class="overview-card">
+              <h4>Service History</h4>
+              <div id="serviceHistory">
+                <p class="no-data">Loading service data...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Stripe Data Tab -->
+        <div class="customer-tab-content" id="customer-stripe">
+          <div class="tab-header">
+            <h4>Stripe Payment History</h4>
+            <span class="subtitle" id="stripeCustomerInfo"></span>
+          </div>
+          <div id="stripeTransactions">
+            <p class="no-data">No Stripe data available or customer not mapped</p>
+          </div>
+        </div>
+        
+        <!-- HaloPSA Transactions Tab -->
+        <div class="customer-tab-content" id="customer-halopsa">
+          <h4>HaloPSA Transactions & Invoices</h4>
+          <div id="halopsaTransactions">
+            <p class="no-data">Loading HaloPSA transactions...</p>
+          </div>
+        </div>
+        
+        <!-- Purchase Orders Tab -->
+        <div class="customer-tab-content" id="customer-purchase-orders">
+          <h4>Purchase Orders</h4>
+          <div id="purchaseOrders">
+            <p class="no-data">Loading purchase orders...</p>
+          </div>
+        </div>
+        
+        <!-- Service Items Tab -->
+        <div class="customer-tab-content" id="customer-items">
+          <h4>Service Items & Products</h4>
+          <div id="serviceItems">
+            <p class="no-data">Loading service items...</p>
+          </div>
+        </div>
+        
+        <!-- Mapping Tab -->
+        <div class="customer-tab-content" id="customer-mapping">
+          <h4>Customer Mapping</h4>
+          <div id="mappingSettings">
+            <p class="no-data">Loading mapping settings...</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="customer-actions">
+        <button class="btn secondary" id="backToList">Back to Customer List</button>
+        <button class="btn primary" id="refreshCustomerData">Refresh Data</button>
+        <button class="btn warning" id="editCustomer">Edit Customer</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,497 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CSV to QuickBooks IIF Sync</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="container">
+      <h1>CSV to QuickBooks IIF Sync</h1>
+      
+      <div class="tab-container">
+        <div class="tabs">
+          <div class="tab active" data-tab="config">Configuration</div>
+          <div class="tab" data-tab="stripe">Stripe Integration</div>
+          <div class="tab" data-tab="mapping">Customer Mapping</div>
+          <div class="tab" data-tab="status">System Status</div>
+          <div class="tab" data-tab="halopsa">HaloPSA Integration</div>
+          <div class="tab" data-tab="customer">Customer View</div>
+        </div>
+        
+        <!-- Configuration Tab -->
+        <div class="tab-content active" id="config">
+          <div class="config-section">
+            <div class="config-header">
+              <h3>QuickBooks Configuration</h3>
+            </div>
+            <form id="qbConfigForm">
+              <div class="form-group">
+                <label for="qbwc_username">QBWC Username</label>
+                <input type="text" id="qbwc_username" name="qbwc_username">
+              </div>
+              <div class="form-group">
+                <label for="qbwc_password">QBWC Password</label>
+                <input type="password" id="qbwc_password" name="qbwc_password">
+              </div>
+              <div class="form-group">
+                <label for="quickbooks_default_account">Default Account</label>
+                <input type="text" id="quickbooks_default_account" name="quickbooks_default_account">
+              </div>
+              <button type="submit" class="btn">Save QB Configuration</button>
+            </form>
+          </div>
+        </div>
+        
+        <!-- Stripe Integration Tab -->
+        <div class="tab-content" id="stripe">
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Stripe API Configuration</h3>
+            </div>
+            <form id="stripeConfigForm">
+              <div class="form-group">
+                <label for="stripe_secret_key">Stripe Secret Key</label>
+                <input type="password" id="stripe_secret_key" name="stripe_secret_key" placeholder="sk_live_...">
+              </div>
+              <div class="form-group">
+                <label for="stripe_webhook_secret">Webhook Secret</label>
+                <input type="password" id="stripe_webhook_secret" name="stripe_webhook_secret">
+              </div>
+              <div class="form-group">
+                <label for="stripe_sync_enabled">Enable Stripe Sync</label>
+                <select id="stripe_sync_enabled" name="stripe_sync_enabled">
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="stripe_sync_interval">Sync Interval (minutes)</label>
+                <input type="number" id="stripe_sync_interval" name="stripe_sync_interval" min="5" max="1440">
+              </div>
+              <div class="actions">
+                <button type="submit" class="btn">Save Stripe Config</button>
+                <button type="button" class="btn secondary" id="testStripe">Test Connection</button>
+                <button type="button" class="btn primary" id="importCustomers">Import Customers</button>
+                <button type="button" class="btn success" id="importTransactions">Import New Transactions</button>
+                <button type="button" class="btn warning" id="importAllTransactions">Import ALL Transactions</button>
+              </div>
+              
+              <!-- Progress Bar Containers -->
+              <div id="customerProgress" class="progress-container" style="display: none;">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="progress-text" id="customerProgressText">Starting import...</div>
+              </div>
+              
+              <div id="transactionProgress" class="progress-container" style="display: none;">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="progress-text" id="transactionProgressText">Starting import...</div>
+              </div>
+            </form>
+          </div>
+          
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Imported Stripe Customers</h3>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn info" id="refreshCustomers">Refresh List</button>
+              <span id="customerStats" class="status info" style="margin-left: 10px;"></span>
+            </div>
+            <div id="stripeCustomersList">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Created</th>
+                    <th>Last Sync</th>
+                  </tr>
+                </thead>
+                <tbody id="customersTable">
+                  <!-- Imported customers will be loaded here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Imported Stripe Transactions</h3>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn info" id="refreshTransactions">Refresh List</button>
+              <span id="transactionStats" class="status info" style="margin-left: 10px;"></span>
+            </div>
+            <div id="stripeTransactions">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Amount</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="transactionsTable">
+                  <!-- Imported transactions will be loaded here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Customer Mapping Tab -->
+        <div class="tab-content" id="mapping">
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Customer Mapping Tool</h3>
+            </div>
+            <div class="mapping-section">
+              <div class="customer-list" id="stripeCustomers">
+                <h4>Stripe Customers</h4>
+                <!-- Stripe customers will be listed here -->
+              </div>
+              <div class="customer-list" id="haloCustomers">
+                <h4>HaloPSA Clients</h4>
+                <!-- HaloPSA clients will be listed here -->
+              </div>
+            </div>
+            <div class="actions" style="margin-top: 20px;">
+              <button class="btn" id="loadStripeCustomers">Load Stripe Customers</button>
+              <button class="btn" id="loadHaloCustomers">Load HaloPSA Clients</button>
+              <button class="btn success" id="autoMatch">Auto-match</button>
+              <button class="btn primary" id="saveMappings">Save Mappings</button>
+            </div>
+            <div id="mappingResults" style="margin-top: 20px;">
+              <!-- Auto-match results will be shown here -->
+            </div>
+          </div>
+          
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Existing Mappings</h3>
+            </div>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Stripe Customer</th>
+                  <th>HaloPSA Client</th>
+                  <th>Match Type</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="mappingsTable">
+                <!-- Existing mappings will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        
+        <!-- HaloPSA Integration Tab -->
+        <div class="tab-content" id="halopsa">
+          <div class="config-section">
+            <div class="config-header">
+              <h3>HaloPSA API Configuration</h3>
+            </div>
+            <form id="halopsaConfigForm">
+              <div class="form-group">
+                <label for="halopsa_api_url">HaloPSA Instance URL</label>
+                <input type="text" id="halopsa_api_url" name="halopsa_api_url" placeholder="https://yourcompany.halopsa.com">
+              </div>
+              <div class="form-group">
+                <label for="halopsa_client_id">OAuth Client ID</label>
+                <input type="text" id="halopsa_client_id" name="halopsa_client_id" placeholder="Client ID from HaloPSA app registration">
+              </div>
+              <div class="form-group">
+                <label for="halopsa_client_secret">OAuth Client Secret</label>
+                <input type="password" id="halopsa_client_secret" name="halopsa_client_secret" placeholder="Client Secret from HaloPSA app registration">
+              </div>
+              <div class="form-group">
+                <label for="halopsa_access_token">OAuth Access Token (Manual)</label>
+                <input type="password" id="halopsa_access_token" name="halopsa_access_token" placeholder="Manually obtained access token">
+                <small>Get this via OAuth flow for now</small>
+              </div>
+              <div class="form-group">
+                <label for="halopsa_purchase_order_report_id">Purchase Order Report ID</label>
+                <input type="text" id="halopsa_purchase_order_report_id" name="halopsa_purchase_order_report_id" placeholder="Report ID for purchase orders">
+              </div>
+              <div class="form-group">
+                <label for="halopsa_invoice_report_id">Invoice Report ID</label>
+                <input type="text" id="halopsa_invoice_report_id" name="halopsa_invoice_report_id" placeholder="Report ID for invoices">
+              </div>
+              <div class="actions">
+                <button type="submit" class="btn">Save HaloPSA Config</button>
+                <button type="button" class="btn secondary" id="testHalopsa">Test Connection</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="config-section">
+            <div class="config-header">
+              <h3>HaloPSA Data Import</h3>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn primary" id="importHalopsaClients">Import HaloPSA Clients</button>
+              <button type="button" class="btn success" id="importHalopsaPurchaseOrders">Import Purchase Orders</button>
+              <button type="button" class="btn success" id="importHalopsaInvoices">Import Invoices</button>
+            </div>
+            
+            <!-- Progress Bars for HaloPSA -->
+            <div id="halopsaClientProgress" class="progress-container" style="display: none;">
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: 0%"></div>
+              </div>
+              <div class="progress-text" id="halopsaClientProgressText">Starting import...</div>
+            </div>
+            
+            <div id="halopsaPurchaseOrderProgress" class="progress-container" style="display: none;">
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: 0%"></div>
+              </div>
+              <div class="progress-text" id="halopsaPurchaseOrderProgressText">Starting import...</div>
+            </div>
+            
+            <div id="halopsaInvoiceProgress" class="progress-container" style="display: none;">
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: 0%"></div>
+              </div>
+              <div class="progress-text" id="halopsaInvoiceProgressText">Starting import...</div>
+            </div>
+          </div>
+
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Imported HaloPSA Data</h3>
+            </div>
+            <div class="halopsa-data-tabs">
+              <div class="tabs">
+                <div class="tab active" data-halopsa-tab="clients">Clients</div>
+                <div class="tab" data-halopsa-tab="purchase-orders">Purchase Orders</div>
+                <div class="tab" data-halopsa-tab="invoices">Invoices</div>
+              </div>
+              
+              <div class="halopsa-tab-content active" id="halopsa-clients">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Client Name</th>
+                      <th>Email</th>
+                      <th>Phone</th>
+                      <th>Created</th>
+                      <th>Mapped To</th>
+                    </tr>
+                  </thead>
+                  <tbody id="halopsaClientsTable">
+                  </tbody>
+                </table>
+              </div>
+              
+              <div class="halopsa-tab-content" id="halopsa-purchase-orders">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>PO Number</th>
+                      <th>Client</th>
+                      <th>Date</th>
+                      <th>Amount</th>
+                      <th>Vendor</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="halopsaPurchaseOrdersTable">
+                  </tbody>
+                </table>
+              </div>
+              
+              <div class="halopsa-tab-content" id="halopsa-invoices">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Invoice #</th>
+                      <th>Client</th>
+                      <th>Date</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>Mapped To</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="halopsaInvoicesTable">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Customer View Tab -->
+        <div class="tab-content" id="customer">
+          <div class="config-section">
+            <div class="config-header">
+              <h3>HaloPSA Customer Management <span class="badge info">Source of Truth</span></h3>
+            </div>
+            
+            <!-- Customer Search and Filter -->
+            <div class="customer-controls">
+              <div class="form-group">
+                <label for="customerSearch">Search Customers:</label>
+                <input type="text" id="customerSearch" placeholder="Search by name, email, or ID..." class="customer-search">
+              </div>
+              <div class="filter-group">
+                <label>Filter by:</label>
+                <select id="customerFilter" class="customer-filter">
+                  <option value="all">All Customers</option>
+                  <option value="mapped">Mapped to Stripe</option>
+                  <option value="unmapped">Not Mapped</option>
+                  <option value="with-invoices">Has Invoices</option>
+                  <option value="with-orders">Has Purchase Orders</option>
+                </select>
+              </div>
+              <button class="btn primary" id="refreshCustomers">Refresh</button>
+            </div>
+            
+            <!-- Customer List -->
+            <div id="customerList">
+              <div class="customer-list-header">
+                <h4>HaloPSA Clients</h4>
+                <div class="pagination-controls">
+                  <span id="customerPaginationInfo">Loading...</span>
+                  <button class="btn small" id="prevPage">Previous</button>
+                  <button class="btn small" id="nextPage">Next</button>
+                </div>
+              </div>
+              <div id="customerListContent" class="customer-list-content">
+                <!-- Customer cards will be populated here -->
+              </div>
+            </div>
+            
+            <!-- Customer Detail View -->
+            <div id="customerDetail" style="display: none;">
+              <div class="customer-header">
+                <div class="customer-badge">
+                  <span class="badge primary">HaloPSA Client</span>
+                  <span id="customerMappedBadge" class="badge success" style="display: none;">Mapped to Stripe</span>
+                </div>
+                <h2 id="customerName">Customer Name</h2>
+                <div class="customer-meta">
+                  <span id="customerEmail">Email</span> • 
+                  <span id="customerPhone">Phone</span> • 
+                  <span id="customerSince">Member Since</span> •
+                  <span id="customerAddress">Address</span>
+                </div>
+              </div>
+              
+              <!-- Quick Stats -->
+              <div class="customer-stats">
+                <div class="stat-card">
+                  <div class="stat-value" id="statInvoices">0</div>
+                  <div class="stat-label">Stripe Invoices</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-value" id="statTransactions">0</div>
+                  <div class="stat-label">HaloPSA Transactions</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-value" id="statPurchaseOrders">0</div>
+                  <div class="stat-label">Purchase Orders</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-value" id="statItems">0</div>
+                  <div class="stat-label">Service Items</div>
+                </div>
+              </div>
+              
+              <!-- Customer Tabs -->
+              <div class="customer-tabs">
+                <div class="tabs">
+                  <div class="tab active" data-customer-tab="overview">Overview</div>
+                  <div class="tab" data-customer-tab="stripe">Stripe Data</div>
+                  <div class="tab" data-customer-tab="halopsa">HaloPSA Transactions</div>
+                  <div class="tab" data-customer-tab="purchase-orders">Purchase Orders</div>
+                  <div class="tab" data-customer-tab="items">Service Items</div>
+                  <div class="tab" data-customer-tab="mapping">Mapping Settings</div>
+                </div>
+                
+                <!-- Overview Tab -->
+                <div class="customer-tab-content active" id="customer-overview">
+                  <div class="overview-grid">
+                    <div class="overview-card">
+                      <h4>Recent Activity</h4>
+                      <div id="recentActivity">
+                        <p class="no-data">Loading activity data...</p>
+                      </div>
+                    </div>
+                    <div class="overview-card">
+                      <h4>Financial Summary</h4>
+                      <div id="financialSummary">
+                        <p class="no-data">Loading financial data...</p>
+                      </div>
+                    </div>
+                    <div class="overview-card">
+                      <h4>Service History</h4>
+                      <div id="serviceHistory">
+                        <p class="no-data">Loading service data...</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Other customer tabs would be populated here -->
+              </div>
+              
+              <div class="customer-actions">
+                <button class="btn secondary" id="backToList">Back to Customer List</button>
+                <button class="btn primary" id="refreshCustomerData">Refresh Data</button>
+                <button class="btn warning" id="editCustomer">Edit Customer</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- System Status Tab -->
+        <div class="tab-content" id="status">
+          <div class="config-section">
+            <div class="config-header">
+              <h3>System Status</h3>
+            </div>
+            <div id="systemStatus">
+              <div class="status info">
+                <strong>QuickBooks Web Connector:</strong> <span id="qbwcStatus">Checking...</span>
+              </div>
+              <div class="status info">
+                <strong>Stripe Integration:</strong> <span id="stripeStatus">Checking...</span>
+              </div>
+              <div class="status info">
+                <strong>HaloPSA Connection:</strong> <span id="halopsaStatus">Checking...</span>
+              </div>
+              <div class="status info">
+                <strong>Database:</strong> <span id="dbStatus">Checking...</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="config-section">
+            <div class="config-header">
+              <h3>Recent Activity</h3>
+            </div>
+            <div id="activityLog">
+              <!-- Activity log will be populated here -->
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="statusMessage" class="status" style="display: none;"></div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

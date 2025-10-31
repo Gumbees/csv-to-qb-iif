@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Searchable Dropdown Test</title>
+    <link rel="stylesheet" href="src/components/searchable-dropdown.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 2rem;
+        }
+        .test-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 2rem;
+        }
+        .test-section h2 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+        .dropdown-container {
+            margin-bottom: 1.5rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #555;
+        }
+        .result {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        button {
+            padding: 0.5rem 1rem;
+            margin-right: 0.5rem;
+            margin-top: 0.5rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Searchable Dropdown Component Test</h1>
+
+    <!-- Test 1: Basic dropdown -->
+    <div class="test-section">
+        <h2>Test 1: Basic Account Dropdown</h2>
+        <div class="dropdown-container">
+            <label>QuickBooks Account:</label>
+            <div id="test-dropdown-1"></div>
+        </div>
+        <div class="result" id="result-1">Selected: None</div>
+        <button onclick="testClear(1)">Clear Selection</button>
+        <button onclick="testSetValue(1)">Set to Account #5</button>
+        <button onclick="testGetValue(1)">Get Value</button>
+    </div>
+
+    <!-- Test 2: Large dataset (100+ items) -->
+    <div class="test-section">
+        <h2>Test 2: Large Dataset (150 accounts)</h2>
+        <div class="dropdown-container">
+            <label>Select Account (Test Virtual Scrolling):</label>
+            <div id="test-dropdown-2"></div>
+        </div>
+        <div class="result" id="result-2">Selected: None</div>
+    </div>
+
+    <!-- Test 3: Disabled state -->
+    <div class="test-section">
+        <h2>Test 3: Disabled Dropdown</h2>
+        <div class="dropdown-container">
+            <label>Disabled Account Selector:</label>
+            <div id="test-dropdown-3"></div>
+        </div>
+        <button onclick="testToggleDisable()">Toggle Disabled</button>
+    </div>
+
+    <!-- Test 4: Custom rendering -->
+    <div class="test-section">
+        <h2>Test 4: Custom Item Rendering</h2>
+        <div class="dropdown-container">
+            <label>Account with Icons:</label>
+            <div id="test-dropdown-4"></div>
+        </div>
+        <div class="result" id="result-4">Selected: None</div>
+    </div>
+
+    <script src="src/components/searchable-dropdown.js"></script>
+    <script>
+        // Test data
+        const generateAccounts = (count) => {
+            const types = ['Bank', 'Other Current Asset', 'Fixed Asset', 'Other Asset', 'Accounts Receivable',
+                          'Equity', 'Expense', 'Other Expense', 'Cost of Goods Sold', 'Income', 'Other Income',
+                          'Accounts Payable', 'Credit Card', 'Long Term Liability', 'Other Current Liability'];
+
+            const accounts = [];
+            for (let i = 1; i <= count; i++) {
+                const type = types[Math.floor(Math.random() * types.length)];
+                accounts.push({
+                    id: i,
+                    text: `Account ${i.toString().padStart(4, '0')} - ${type}`
+                });
+            }
+            return accounts;
+        };
+
+        // Test 1: Basic dropdown
+        const dropdown1 = new CustomSearchableDropdown('test-dropdown-1', {
+            placeholder: 'Search accounts...',
+            items: generateAccounts(20),
+            onChange: (item) => {
+                document.getElementById('result-1').textContent =
+                    item ? `Selected: ${item.text} (ID: ${item.id})` : 'Selected: None';
+            }
+        });
+
+        // Test 2: Large dataset
+        const dropdown2 = new CustomSearchableDropdown('test-dropdown-2', {
+            placeholder: 'Type to search 150 accounts...',
+            items: generateAccounts(150),
+            onChange: (item) => {
+                document.getElementById('result-2').textContent =
+                    item ? `Selected: ${item.text} (ID: ${item.id})` : 'Selected: None';
+            },
+            virtualScrollThreshold: 50
+        });
+
+        // Test 3: Disabled dropdown
+        const dropdown3 = new CustomSearchableDropdown('test-dropdown-3', {
+            placeholder: 'This dropdown is disabled',
+            items: generateAccounts(10),
+            disabled: true
+        });
+
+        // Test 4: Custom rendering
+        const accountIcons = {
+            'Bank': '🏦',
+            'Asset': '💰',
+            'Equity': '📊',
+            'Expense': '💸',
+            'Income': '💵',
+            'Liability': '📋'
+        };
+
+        const getIcon = (text) => {
+            for (const [key, icon] of Object.entries(accountIcons)) {
+                if (text.includes(key)) return icon;
+            }
+            return '📁';
+        };
+
+        const dropdown4 = new CustomSearchableDropdown('test-dropdown-4', {
+            placeholder: 'Select account with icon...',
+            items: generateAccounts(30),
+            onChange: (item) => {
+                document.getElementById('result-4').textContent =
+                    item ? `Selected: ${item.text} (ID: ${item.id})` : 'Selected: None';
+            },
+            renderItem: (item) => {
+                const icon = getIcon(item.text);
+                return `<span>${icon} ${item.text}</span>`;
+            }
+        });
+
+        // Test buttons
+        function testClear(dropdownNum) {
+            if (dropdownNum === 1) {
+                dropdown1.clear();
+            }
+        }
+
+        function testSetValue(dropdownNum) {
+            if (dropdownNum === 1) {
+                dropdown1.setSelectedId(5);
+            }
+        }
+
+        function testGetValue(dropdownNum) {
+            if (dropdownNum === 1) {
+                const value = dropdown1.getValue();
+                alert(value ? `Current value: ${JSON.stringify(value, null, 2)}` : 'No value selected');
+            }
+        }
+
+        function testToggleDisable() {
+            const currentState = dropdown3.options.disabled;
+            dropdown3.setDisabled(!currentState);
+        }
+
+        console.log('Searchable Dropdown Test Page Loaded');
+        console.log('Test 1 - Basic:', dropdown1);
+        console.log('Test 2 - Large dataset:', dropdown2);
+        console.log('Test 3 - Disabled:', dropdown3);
+        console.log('Test 4 - Custom rendering:', dropdown4);
+    </script>
+</body>
+</html>

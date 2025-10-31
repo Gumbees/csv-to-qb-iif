@@ -26,5 +26,5 @@ ENV NODE_ENV=production
 # Optional: simple container healthcheck
 HEALTHCHECK --interval=30s --timeout=3s --retries=5 CMD node -e "require('http').get('http://localhost:3000/healthz', r=>{if(r.statusCode!==200)process.exit(1);}).on('error',()=>process.exit(1))"
 
-# Use npm start which runs "node src/server.js" 
-CMD [ "npm", "start" ]
+# Use node directly instead of npm start (which uses nodemon)
+CMD [ "node", "src/server.js" ]

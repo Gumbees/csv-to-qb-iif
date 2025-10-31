@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CSV to QuickBooks IIF Sync - Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <h1>CSV to QuickBooks IIF Sync</h1>
+
+    <!-- Centralized Dashboard Stats -->
+    <div class="dashboard-wrapper">
+      <div id="dashboardStats">
+        <!-- Dashboard stats will be rendered here dynamically -->
+        <div style="text-align: center; padding: 2rem; color: var(--color-gray-600);">
+          <p>Loading dashboard statistics...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-container">
+      <div class="tabs" id="tabsContainer">
+        <!-- Tabs will be rendered dynamically by TabManager -->
+      </div>
+
+      <!-- Tab Content Areas -->
+      <div class="tab-content active" id="dashboard">
+        <h2>Welcome to Your Financial Data Sync Dashboard</h2>
+        <p>Select a tab above to get started with synchronizing your data between Stripe, HaloPSA, and QuickBooks Desktop.</p>
+
+        <div class="overview-grid" style="margin-top: 2rem;">
+          <div class="overview-card">
+            <h3>Configuration</h3>
+            <p>Set up API credentials for Stripe, HaloPSA, and QuickBooks Web Connector.</p>
+          </div>
+          <div class="overview-card">
+            <h3>Stripe Integration</h3>
+            <p>Import customers and transactions from your Stripe account.</p>
+          </div>
+          <div class="overview-card">
+            <h3>HaloPSA Integration</h3>
+            <p>Sync clients, invoices, and purchase orders from HaloPSA.</p>
+          </div>
+          <div class="overview-card">
+            <h3>Customer Mapping</h3>
+            <p>Auto-match customers between Stripe and HaloPSA for unified data.</p>
+          </div>
+          <div class="overview-card">
+            <h3>Customer View</h3>
+            <p>View detailed customer information across all integrated systems.</p>
+          </div>
+          <div class="overview-card">
+            <h3>System Status</h3>
+            <p>Monitor connection health and sync status for all integrations.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="config">
+        <!-- Configuration tab content loaded dynamically -->
+      </div>
+
+      <div class="tab-content" id="stripe">
+        <!-- Stripe tab content loaded dynamically -->
+      </div>
+
+      <div class="tab-content" id="halopsa">
+        <!-- HaloPSA tab content loaded dynamically -->
+      </div>
+
+      <div class="tab-content" id="mapping">
+        <!-- Customer mapping content loaded dynamically -->
+      </div>
+
+      <div class="tab-content" id="customer">
+        <!-- Customer view content loaded dynamically -->
+      </div>
+
+      <div class="tab-content" id="status">
+        <!-- System status content loaded dynamically -->
+      </div>
+    </div>
+
+    <!-- Global Status Message -->
+    <div id="statusMessage" class="status" style="display: none;"></div>
+  </div>
+
+  <!-- Load Component System and Application Scripts -->
+  <script src="components/dashboard.js"></script>
+  <script>
+    // Initialize Dashboard Stats
+    let dashboardStats;
+    let tabManager;
+
+    // Global utility function for status messages
+    function showStatus(message, type = 'info') {
+      const statusDiv = document.getElementById('statusMessage');
+      statusDiv.textContent = message;
+      statusDiv.className = `status ${type}`;
+      statusDiv.style.display = 'block';
+      setTimeout(() => statusDiv.style.display = 'none', 5000);
+    }
+
+    // Initialize the application
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Initialize Dashboard Stats Component
+      dashboardStats = new DashboardStats();
+      await dashboardStats.init();
+
+      // Initialize Tab Manager
+      tabManager = new TabManager();
+
+      // Register all tabs
+      tabManager.registerTab('dashboard', {
+        title: 'Dashboard',
+        icon: '📊',
+        file: null, // No file to load, content is inline
+        enabled: true,
+        init: null
+      });
+
+      tabManager.registerTab('config', {
+        title: 'Configuration',
+        icon: '⚙️',
+        file: 'tabs/config.html',
+        enabled: true,
+        init: initConfigTab
+      });
+
+      tabManager.registerTab('stripe', {
+        title: 'Stripe',
+        icon: '💳',
+        file: 'tabs/stripe.html',
+        enabled: true,
+        init: initStripeTab
+      });
+
+      tabManager.registerTab('halopsa', {
+        title: 'HaloPSA',
+        icon: '🏢',
+        file: 'tabs/halopsa.html',
+        enabled: true,
+        init: initHaloPSATab
+      });
+
+      tabManager.registerTab('mapping', {
+        title: 'Mapping',
+        icon: '🔗',
+        file: 'tabs/mapping.html',
+        enabled: true,
+        init: initMappingTab
+      });
+
+      tabManager.registerTab('customer', {
+        title: 'Customers',
+        icon: '👥',
+        file: 'tabs/customer.html',
+        enabled: true,
+        init: initCustomerTab
+      });
+
+      tabManager.registerTab('status', {
+        title: 'System Status',
+        icon: '📡',
+        file: 'tabs/status.html',
+        enabled: true,
+        init: initStatusTab
+      });
+
+      // Render tabs
+      tabManager.renderTabs();
+
+      // Switch to dashboard tab by default
+      tabManager.currentTab = 'dashboard';
+    });
+
+    // Tab-specific initialization functions
+    function initConfigTab() {
+      const form = document.getElementById('qbConfigForm');
+      if (form) {
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const formData = new FormData(e.target);
+          const config = Object.fromEntries(formData);
+
+          try {
+            const response = await fetch('/api/config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(config)
+            });
+
+            if (response.ok) {
+              showStatus('Configuration saved successfully', 'success');
+              dashboardStats.refresh();
+            } else {
+              throw new Error('Failed to save configuration');
+            }
+          } catch (error) {
+            showStatus('Error saving configuration: ' + error.message, 'error');
+          }
+        });
+      }
+
+      // Load current configuration
+      loadConfiguration();
+    }
+
+    function initStripeTab() {
+      // Attach event listeners for Stripe tab
+      const stripeForm = document.getElementById('stripeConfigForm');
+      if (stripeForm) {
+        stripeForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const formData = new FormData(e.target);
+          await saveConfig(formData);
+          dashboardStats.refresh();
+        });
+      }
+
+      const testBtn = document.getElementById('testStripe');
+      if (testBtn) testBtn.addEventListener('click', testStripeConnection);
+
+      const importCustomersBtn = document.getElementById('importCustomers');
+      if (importCustomersBtn) importCustomersBtn.addEventListener('click', () => {
+        importStripeCustomers().then(() => dashboardStats.refresh());
+      });
+
+      const importTransactionsBtn = document.getElementById('importTransactions');
+      if (importTransactionsBtn) importTransactionsBtn.addEventListener('click', () => {
+        importStripeTransactions(false).then(() => dashboardStats.refresh());
+      });
+
+      const importAllBtn = document.getElementById('importAllTransactions');
+      if (importAllBtn) importAllBtn.addEventListener('click', () => {
+        importStripeTransactions(true).then(() => dashboardStats.refresh());
+      });
+
+      loadImportedCustomers();
+      loadImportedTransactions();
+    }
+
+    function initHaloPSATab() {
+      const haloPSAForm = document.getElementById('halopsaConfigForm');
+      if (haloPSAForm) {
+        haloPSAForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const formData = new FormData(e.target);
+          await saveConfig(formData);
+          dashboardStats.refresh();
+        });
+      }
+
+      const testBtn = document.getElementById('testHalopsa');
+      if (testBtn) testBtn.addEventListener('click', testHalopsaConnection);
+
+      const importClientsBtn = document.getElementById('importHalopsaClients');
+      if (importClientsBtn) importClientsBtn.addEventListener('click', () => {
+        importHalopsaClients().then(() => dashboardStats.refresh());
+      });
+
+      const importInvoicesBtn = document.getElementById('importHalopsaInvoices');
+      if (importInvoicesBtn) importInvoicesBtn.addEventListener('click', () => {
+        importHalopsaInvoices().then(() => dashboardStats.refresh());
+      });
+
+      const importPOsBtn = document.getElementById('importHalopsaPurchaseOrders');
+      if (importPOsBtn) importPOsBtn.addEventListener('click', () => {
+        importHalopsaPurchaseOrders().then(() => dashboardStats.refresh());
+      });
+
+      loadHalopsaClients();
+    }
+
+    function initMappingTab() {
+      const loadStripeBtn = document.getElementById('loadStripeCustomers');
+      if (loadStripeBtn) loadStripeBtn.addEventListener('click', loadStripeCustomers);
+
+      const loadHaloBtn = document.getElementById('loadHaloCustomers');
+      if (loadHaloBtn) loadHaloBtn.addEventListener('click', loadHaloCustomers);
+
+      const autoMatchBtn = document.getElementById('autoMatch');
+      if (autoMatchBtn) autoMatchBtn.addEventListener('click', () => {
+        autoMatchCustomers().then(() => dashboardStats.refresh());
+      });
+
+      const saveMappingsBtn = document.getElementById('saveMappings');
+      if (saveMappingsBtn) saveMappingsBtn.addEventListener('click', saveCustomerMappings);
+
+      loadCustomerMappings();
+    }
+
+    function initCustomerTab() {
+      console.log('Initializing customer tab');
+      loadCustomerList();
+    }
+
+    function initStatusTab() {
+      loadSystemStatus();
+    }
+
+    // Configuration loading helper
+    async function loadConfiguration() {
+      try {
+        const response = await fetch('/api/config');
+        const config = await response.json();
+
+        // Populate form fields
+        Object.keys(config).forEach(key => {
+          const element = document.getElementById(key);
+          if (element) {
+            element.value = config[key];
+          }
+        });
+      } catch (error) {
+        showStatus('Error loading configuration: ' + error.message, 'error');
+      }
+    }
+
+    async function saveConfig(formData) {
+      try {
+        const config = Object.fromEntries(formData);
+        const response = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config)
+        });
+
+        if (response.ok) {
+          showStatus('Configuration saved successfully', 'success');
+          return true;
+        } else {
+          throw new Error('Failed to save configuration');
+        }
+      } catch (error) {
+        showStatus('Error saving configuration: ' + error.message, 'error');
+        return false;
+      }
+    }
+
+    // Stripe functions (placeholders - these will be implemented in the tab files)
+    async function testStripeConnection() {
+      try {
+        const response = await fetch('/api/stripe/test');
+        const result = await response.json();
+        showStatus(result.message, result.success ? 'success' : 'error');
+      } catch (error) {
+        showStatus('Error testing Stripe connection: ' + error.message, 'error');
+      }
+    }
+
+    async function importStripeCustomers() {
+      const btn = document.getElementById('importCustomers');
+      if (!btn) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Importing...';
+
+      try {
+        const response = await fetch('/api/stripe/import/customers', { method: 'POST' });
+        const result = await response.json();
+        showStatus(result.message, result.success ? 'success' : 'error');
+        if (result.success) {
+          loadImportedCustomers();
+        }
+      } catch (error) {
+        showStatus('Error importing customers: ' + error.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Import Customers';
+      }
+    }
+
+    async function importStripeTransactions(importAll = false) {
+      const btnId = importAll ? 'importAllTransactions' : 'importTransactions';
+      const btn = document.getElementById(btnId);
+      if (!btn) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Importing...';
+
+      try {
+        const url = importAll ? '/api/stripe/import/transactions?all=true' : '/api/stripe/import/transactions';
+        const response = await fetch(url, { method: 'POST' });
+        const result = await response.json();
+        showStatus(result.message, result.success ? 'success' : 'error');
+        if (result.success) {
+          loadImportedTransactions();
+        }
+      } catch (error) {
+        showStatus('Error importing transactions: ' + error.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = importAll ? 'Import ALL Transactions' : 'Import New Transactions';
+      }
+    }
+
+    async function loadImportedCustomers() {
+      try {
+        const response = await fetch('/api/stripe/customers/imported');
+        const customers = await response.json();
+        const table = document.getElementById('customersTable');
+        if (!table) return;
+
+        table.innerHTML = customers.map(customer => `
+          <tr>
+            <td><strong>${customer.name || 'Unnamed Customer'}</strong></td>
+            <td>${customer.email || 'No email'}</td>
+            <td>${customer.phone || 'No phone'}</td>
+            <td>${new Date(customer.created * 1000).toLocaleDateString()}</td>
+            <td>${new Date(customer.last_sync).toLocaleDateString()}</td>
+          </tr>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading imported customers:', error);
+      }
+    }
+
+    async function loadImportedTransactions() {
+      try {
+        const response = await fetch('/api/stripe/transactions/imported');
+        const transactions = await response.json();
+        const table = document.getElementById('transactionsTable');
+        if (!table) return;
+
+        table.innerHTML = transactions.map(tx => `
+          <tr>
+            <td>${new Date(tx.created * 1000).toLocaleDateString()}</td>
+            <td>${tx.customer_name || tx.customer_id || 'No customer'}</td>
+            <td>$${(tx.amount / 100).toFixed(2)} ${tx.currency}</td>
+            <td>${tx.description || 'No description'}</td>
+            <td><span class="badge ${tx.status === 'succeeded' ? 'success' : 'warning'}">${tx.status}</span></td>
+          </tr>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading imported transactions:', error);
+      }
+    }
+
+    // HaloPSA functions (placeholders)
+    async function testHalopsaConnection() {
+      try {
+        const response = await fetch('/api/halopsa/test');
+        const result = await response.json();
+        showStatus(result.message, result.success ? 'success' : 'error');
+      } catch (error) {
+        showStatus('Error testing HaloPSA connection: ' + error.message, 'error');
+      }
+    }
+
+    async function importHalopsaClients() {
+      const btn = document.getElementById('importHalopsaClients');
+      if (!btn) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Importing...';
+
+      try {
+        const response = await fetch('/api/halopsa/import/clients', { method: 'POST' });
+        const result = await response.json();
+        showStatus(result.message, result.success ? 'success' : 'error');
+        if (result.success) {
+          loadHalopsaClients();
+        }
+      } catch (error) {
+        showStatus('Error importing HaloPSA clients: ' + error.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Import HaloPSA Clients';
+      }
+    }
+
+    async function importHalopsaInvoices() {
+      const btn = document.getElementById('importHalopsaInvoices');
+      if (!btn) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Importing...';
+
+      try {
+        const response = await fetch('/api/halopsa/import/invoices', { method: 'POST' });
+        const result = await response.json();
+        showStatus(result.message, result.success ? 'success' : 'error');
+      } catch (error) {
+        showStatus('Error importing invoices: ' + error.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Import Invoices';
+      }
+    }
+
+    async function importHalopsaPurchaseOrders() {
+      const btn = document.getElementById('importHalopsaPurchaseOrders');
+      if (!btn) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Importing...';
+
+      try {
+        const response = await fetch('/api/halopsa/import/purchase-orders', { method: 'POST' });
+        const result = await response.json();
+        showStatus(result.message, result.success ? 'success' : 'error');
+      } catch (error) {
+        showStatus('Error importing purchase orders: ' + error.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Import Purchase Orders';
+      }
+    }
+
+    async function loadHalopsaClients() {
+      try {
+        const response = await fetch('/api/halopsa/clients');
+        const clients = await response.json();
+        const table = document.getElementById('halopsaClientsTable');
+        if (!table) return;
+
+        table.innerHTML = clients.slice(0, 50).map(client => `
+          <tr>
+            <td>${client.name || 'N/A'}</td>
+            <td>${client.email || 'N/A'}</td>
+            <td>${client.phone || 'N/A'}</td>
+            <td>${client.created ? new Date(client.created).toLocaleDateString() : 'N/A'}</td>
+            <td>${client.id || 'N/A'}</td>
+          </tr>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading HaloPSA clients:', error);
+      }
+    }
+
+    // Mapping functions (placeholders)
+    async function loadStripeCustomers() {
+      try {
+        const response = await fetch('/api/stripe/customers/imported');
+        const customers = await response.json();
+        const container = document.getElementById('stripeCustomers');
+        if (!container) return;
+
+        container.innerHTML = '<h4>Stripe Customers</h4>' + customers.map(customer => `
+          <div class="customer-item" data-id="${customer.id}">
+            <strong>${customer.name || 'Unnamed Customer'}</strong><br>
+            ${customer.email || 'No email'}
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading Stripe customers:', error);
+      }
+    }
+
+    async function loadHaloCustomers() {
+      try {
+        const response = await fetch('/api/halopsa/clients');
+        const clients = await response.json();
+        const container = document.getElementById('haloCustomers');
+        if (!container) return;
+
+        container.innerHTML = '<h4>HaloPSA Clients</h4>' + clients.map(client => `
+          <div class="customer-item" data-id="${client.id}">
+            <strong>${client.name}</strong><br>
+            ${client.email || 'No email'}
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading HaloPSA clients:', error);
+      }
+    }
+
+    async function autoMatchCustomers() {
+      try {
+        const response = await fetch('/api/customers/automatch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const result = await response.json();
+        showStatus(`Auto-matched ${result.matches?.length || 0} customers`, 'success');
+      } catch (error) {
+        showStatus('Error auto-matching customers: ' + error.message, 'error');
+      }
+    }
+
+    async function loadCustomerMappings() {
+      try {
+        const response = await fetch('/api/customers/mappings');
+        const mappings = await response.json();
+        const table = document.getElementById('mappingsTable');
+        if (!table) return;
+
+        table.innerHTML = mappings.map(mapping => `
+          <tr>
+            <td>${mapping.stripe_customer_name || mapping.stripe_customer_id}</td>
+            <td>${mapping.halopsa_client_name || 'Not mapped'}</td>
+            <td>${mapping.auto_mapped ? 'Auto' : 'Manual'}</td>
+            <td>
+              <button class="action-btn warning">Edit</button>
+              <button class="action-btn danger">Delete</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading mappings:', error);
+      }
+    }
+
+    async function saveCustomerMappings() {
+      showStatus('Manual mapping save functionality coming soon', 'info');
+    }
+
+    // Customer view functions (placeholders)
+    async function loadCustomerList(page = 1, search = '', filter = 'all') {
+      try {
+        const response = await fetch(`/api/customers/overview?page=${page}&pageSize=20&search=${encodeURIComponent(search)}`);
+        const result = await response.json();
+
+        if (result.success) {
+          console.log('Loaded customers:', result.customers);
+          // Display logic would go here
+        }
+      } catch (error) {
+        console.error('Error loading customer list:', error);
+      }
+    }
+
+    // System status functions
+    async function loadSystemStatus() {
+      try {
+        const response = await fetch('/api/status');
+        const status = await response.json();
+
+        // Display status information
+        // Implementation would go in the status tab
+      } catch (error) {
+        console.error('Error loading system status:', error);
+      }
+    }
+
+    // Make global functions available
+    window.showStatus = showStatus;
+    window.dashboardStats = dashboardStats;
+    window.tabManager = tabManager;
+  </script>
+</body>
+</html>

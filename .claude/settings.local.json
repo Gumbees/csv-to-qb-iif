@@ -1,9 +1,31 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3:*)",
-      "Bash(grep:*)"
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(node:*)",
+      "Read(//c/Users/NathanielSmith/OneDrive - Bierly Smith Enterprises/Obsidian/Nate Smith/Journal/Daily Log/**)",
+      "Bash(taskkill:*)",
+      "Bash(curl:*)",
+      "Bash(sqlite3:*)",
+      "Bash(dir:*)",
+      "Bash(timeout:*)",
+      "WebSearch",
+      "WebFetch(domain:wiki.consolibyte.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(start-application.bat)",
+      "Bash(cmd /c:*)",
+      "Bash(del start-application.bat)",
+      "Bash(powershell -Command \"Stop-Process -Id 42932 -Force; node src/server.js\")",
+      "Bash(powershell -Command \"Stop-Process -Id 59492 -Force; node src/server.js\")",
+      "Bash(powershell:*)",
+      "Bash(npm install)",
+      "Bash(start \"G:\\DTC Github\\csv-to-qb-iif\\test-searchable-dropdown.html\")",
+      "WebFetch(domain:www.dtctoday.com)",
+      "Bash(git add:*)",
+      "Bash(if exist nul del nul)"
     ],
-    "deny": []
+    "deny": [],
+    "ask": []
   }
 }

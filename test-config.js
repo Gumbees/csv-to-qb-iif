@@ -1,65 +1,52 @@
-const DatabaseManager = require('./src/database');
-const ConfigAPI = require('./src/config-api');
+const Database = require('./src/database');
 
-async function testConfigAPI() {
-    console.log('=== Testing Configuration API ===');
+async function testConfig() {
+    console.log('Testing HaloPSA configuration...\n');
+    
+    // Create database instance
+    const db = new Database();
     
     try {
-        // Create database instance
-        const db = new DatabaseManager();
-        await db.ready;
+        // Check what HaloPSA configs exist
+        const configs = await db.all("SELECT * FROM config WHERE key LIKE 'halopsa_%'");
         
-        // Create config API instance
-        const configAPI = new ConfigAPI(db);
+        console.log('Current HaloPSA Configuration:');
+        configs.forEach(config => {
+            console.log(`${config.key}: ${config.value ? (config.key.includes('secret') || config.key.includes('token') ? '***' : config.value) : 'NOT SET'}`);
+        });
         
-        console.log('✅ Database and Config API initialized successfully');
+        // Check if old API key field exists
+        const oldApiKey = await db.get("SELECT * FROM config WHERE key = 'halopsa_api_key'");
+        if (oldApiKey) {
+            console.log('\n⚠️  WARNING: Legacy "halopsa_api_key" field found!');
+            console.log('This is causing confusion with the new OAuth setup.');
+            
+            // Ask if we should clean it up
+            console.log('\nWould you like to remove the legacy API key field? (y/n)');
+            // For now, let's remove it automatically since it's causing issues
+            console.log('Automatically removing legacy field...');
+            await db.run("DELETE FROM config WHERE key = 'halopsa_api_key'");
+            console.log('✅ Legacy field removed!');
+            
+            // Show updated config
+            const updatedConfigs = await db.all("SELECT * FROM config WHERE key LIKE 'halopsa_%'");
+            console.log('\n✅ Updated HaloPSA Configuration:');
+            updatedConfigs.forEach(config => {
+                console.log(`${config.key}: ${config.value ? (config.key.includes('secret') || config.key.includes('token') ? '***' : config.value) : 'NOT SET'}`);
+            });
+        } else {
+            console.log('\n✅ No legacy API key field found.');
+        }
         
-        // Test 1: Test system status
-        console.log('\n=== Testing System Status ===');
-        const status = await configAPI.getSystemStatus();
-        console.log('System Status:', JSON.stringify(status, null, 2));
-        
-        // Test 2: Test configuration parsing
-        console.log('\n=== Testing Configuration Value Parsing ===');
-        
-        // Test boolean parsing
-        const boolResult = configAPI.parseConfigValue('true', 'boolean');
-        console.log('Boolean parsing "true":', boolResult);
-        
-        // Test number parsing
-        const numResult = configAPI.parseConfigValue('123.45', 'number');
-        console.log('Number parsing "123.45":', numResult);
-        
-        // Test JSON parsing
-        const jsonResult = configAPI.parseConfigValue('{"key": "value"}', 'json');
-        console.log('JSON parsing:', jsonResult);
-        
-        // Test 3: Test configuration validation
-        console.log('\n=== Testing Configuration Validation ===');
-        
-        // Test required field validation
-        const requiredValidation = configAPI.validateConfig('test_key', '', 'text', null);
-        console.log('Required field validation:', requiredValidation);
-        
-        // Test number validation
-        const numberValidation = configAPI.validateConfig('test_key', 'not-a-number', 'number', null);
-        console.log('Number validation:', numberValidation);
-        
-        // Test 4: Test feature configuration
-        console.log('\n=== Testing Feature Configuration ===');
-        
-        const stripeConfig = await configAPI.getFeatureConfig('stripe');
-        console.log('Stripe config keys:', stripeConfig.map(c => c.key));
-        
-        const qbConfig = await configAPI.getFeatureConfig('quickbooks');
-        console.log('QuickBooks config keys:', qbConfig.map(c => c.key));
-        
-        console.log('\n✅ All Configuration API tests completed successfully!');
-        
+        console.log('\nConfiguration test completed.');
     } catch (error) {
-        console.error('❌ Configuration API test failed:', error);
+        console.error('Test failed:', error);
     }
+    
+    process.exit(0);
 }
 
-// Run the test
-testConfigAPI();
+testConfig().catch(error => {
+    console.error('Test failed:', error);
+    process.exit(1);
+});

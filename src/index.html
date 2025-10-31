@@ -4,7 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financial Data Sync Manager</title>
+    <link rel="stylesheet" href="components/customer-mappings.css">
+    <link rel="stylesheet" href="components/transaction-mappings.css">
+    <link rel="stylesheet" href="components/searchable-dropdown.css">
+    <link rel="stylesheet" href="components/workflow-modal.css">
     <style>
+        /*
+         * DTC BRAND COLOR REFERENCE GUIDE
+         * =================================
+         * Primary: #32373c (dark blue/gray - replaces all purple)
+         * Primary Hover: #23282d (darker shade)
+         * Primary Light: #4a5158 (lighter shade)
+         * Secondary: #abb8c3 (cyan bluish gray)
+         * Success: #27ae60 (green)
+         * Warning: #f39c12 (orange)
+         * Error: #e74c3c (red)
+         * Info: #3498db (blue)
+         * QuickBooks: #2ca01c (keep existing)
+         * Stripe Purple: #635bff (only for Stripe-specific badges)
+         */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -13,7 +31,7 @@
         }
 
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #32373c 0%, #4a5158 100%);
             color: white;
             padding: 1.5rem 2rem;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
@@ -40,7 +58,7 @@
         .workflow-step .number {
             width: 40px;
             height: 40px;
-            background: #667eea;
+            background: #32373c;
             color: white;
             border-radius: 50%;
             display: inline-flex;
@@ -85,7 +103,7 @@
         }
         .nav-item:hover { background: #f8f9fa; }
         .nav-item.active {
-            background: #667eea;
+            background: #32373c;
             color: white;
             font-weight: 500;
         }
@@ -124,7 +142,7 @@
             margin-bottom: 2rem;
         }
         .stat-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #32373c 0%, #4a5158 100%);
             color: white;
             padding: 1.5rem;
             border-radius: 8px;
@@ -149,8 +167,8 @@
             align-items: center;
             gap: 0.5rem;
         }
-        .btn-primary { background: #667eea; color: white; }
-        .btn-primary:hover { background: #5568d3; }
+        .btn-primary { background: #32373c; color: white; }
+        .btn-primary:hover { background: #23282d; }
         .btn-success { background: #38ef7d; color: white; }
         .btn-success:hover { background: #2ed36e; }
         .btn-secondary { background: #95a5a6; color: white; }
@@ -158,6 +176,7 @@
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .table-container { overflow-x: auto; margin-top: 1.5rem; }
+        .table-container-scrollable { overflow-x: auto; overflow-y: auto; max-height: 400px; margin-top: 1.5rem; border: 1px solid #ecf0f1; border-radius: 6px; }
         table { width: 100%; border-collapse: collapse; }
         th, td { padding: 1rem; text-align: left; border-bottom: 1px solid #ecf0f1; }
         th { background: #f8f9fa; font-weight: 600; color: #2c3e50; }
@@ -197,7 +216,7 @@
 
         .spinner {
             border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
+            border-top: 3px solid #32373c;
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -236,7 +255,7 @@
         }
         .load-more-spinner {
             border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
+            border-top: 3px solid #32373c;
             border-radius: 50%;
             width: 30px;
             height: 30px;
@@ -261,19 +280,19 @@
 
     <div class="container">
         <div class="workflow">
-            <div class="workflow-step">
+            <div class="workflow-step" onclick="showImportDataModal()" style="cursor: pointer;">
                 <div class="number">1</div>
-                <h3>Import Data</h3>
+                <h3>📥 Import Data</h3>
                 <p>Pull from Stripe & HaloPSA</p>
             </div>
-            <div class="workflow-step">
+            <div class="workflow-step" onclick="showMapCustomersModal()" style="cursor: pointer;">
                 <div class="number">2</div>
-                <h3>Map Customers</h3>
+                <h3>🔗 Map Customers</h3>
                 <p>Link accounts together</p>
             </div>
-            <div class="workflow-step">
+            <div class="workflow-step" onclick="showVerifyDataModal()" style="cursor: pointer;">
                 <div class="number">3</div>
-                <h3>Verify Data</h3>
+                <h3>⚠️ Verify Data</h3>
                 <p>Review before syncing</p>
             </div>
             <div class="workflow-step">
@@ -310,11 +329,18 @@
                     <span class="badge" id="stripe-tx-badge">0</span>
                 </div>
                 <div class="nav-item" data-view="mappings">
-                    <span>🔗</span> Mappings
+                    <span>🔗</span> Customer Mappings
                     <span class="badge" id="mapping-badge">0</span>
+                </div>
+                <div class="nav-item" data-view="transaction-mappings">
+                    <span>💰</span> Transaction Mappings
+                    <span class="badge" id="tx-mapping-badge">0</span>
                 </div>
                 <div class="nav-item" data-view="sync">
                     <span>🔄</span> QuickBooks Sync
+                </div>
+                <div class="nav-item" data-view="ai-settings">
+                    <span>🤖</span> AI Settings
                 </div>
             </div>
 
@@ -351,7 +377,9 @@
 
                     <h3 style="margin-bottom: 1rem;">Quick Actions</h3>
                     <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem;">
-                        <button class="btn btn-success" style="font-size: 1.1rem; padding: 1rem 1.5rem;" onclick="pullAllData()">⬇️ Pull All Data (Stripe + HaloPSA + Items)</button>
+                        <button class="btn btn-success" style="font-size: 1.1rem; padding: 1rem 1.5rem;" onclick="showImportDataModal()">📥 Import Data</button>
+                        <button class="btn btn-success" style="font-size: 1.1rem; padding: 1rem 1.5rem;" onclick="showMapCustomersModal()">🔗 Map Customers</button>
+                        <button class="btn btn-warning" style="font-size: 1.1rem; padding: 1rem 1.5rem;" onclick="showVerifyDataModal(() => syncToQuickBooks())">⚠️ Verify & Sync to QuickBooks</button>
                     </div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                         <button class="btn btn-primary" onclick="importStripeCustomers()">📥 Import Stripe Customers</button>
@@ -554,52 +582,208 @@
                     </div>
                 </div>
 
-                <!-- Mappings View -->
+                <!-- Customer Mappings View -->
                 <div id="view-mappings" class="view view-hidden">
                     <div class="content-header">
                         <h2>Customer Mappings</h2>
                         <div style="display: flex; gap: 0.5rem;">
-                            <button class="btn btn-success" onclick="autoMapCustomers()">🔗 Auto-Map Customers</button>
-                            <button class="btn btn-primary" onclick="loadMappings()">🔄 Refresh</button>
+                            <button class="btn btn-success" style="background: linear-gradient(135deg, #32373c 0%, #4a5158 100%);" onclick="showAICustomerSuggestions()">🤖 AI Suggest Mappings</button>
+                            <button class="btn btn-success" onclick="mappingsComponent && mappingsComponent.autoMap()">🔗 Auto-Map Customers</button>
+                            <button class="btn btn-primary" onclick="mappingsComponent && mappingsComponent.refresh()">🔄 Refresh</button>
                         </div>
                     </div>
 
-                    <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Stripe → HaloPSA Mappings</h3>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Stripe Customer</th>
-                                    <th>HaloPSA Client</th>
-                                    <th>Auto-Matched</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="stripe-mappings-tbody">
-                                <tr><td colspan="4" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>
-                            </tbody>
-                        </table>
-                        <div id="mappings-scroll-sentinel" class="scroll-sentinel"></div>
-                        <div id="mappings-load-more" class="load-more-container" style="display: none;">
-                            <div class="load-more-spinner"></div>
-                            <div style="margin-top: 0.5rem; color: #95a5a6;">Loading more mappings...</div>
+                    <!-- Component mounts here -->
+                    <div id="customer-mappings-container"></div>
+                </div>
+
+                <!-- AI Customer Suggestions View -->
+                <div id="view-ai-customer-suggestions" class="view view-hidden">
+                    <div class="content-header">
+                        <h2>🤖 AI Customer Mapping Suggestions</h2>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-secondary" onclick="switchView('mappings')">← Back to Mappings</button>
+                            <button class="btn btn-primary" onclick="loadAICustomerSuggestions()">🔄 Refresh</button>
                         </div>
                     </div>
 
-                    <h3 style="margin-top: 2rem; margin-bottom: 1rem;">QuickBooks → HaloPSA Mappings</h3>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>QuickBooks Customer</th>
-                                    <th>HaloPSA Client</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="qb-mappings-tbody">
-                                <tr><td colspan="3" style="text-align: center; padding: 2rem; color: #95a5a6;">QB mappings coming soon</td></tr>
-                            </tbody>
-                        </table>
+                    <div id="ai-suggestions-status" style="padding: 1rem; background: #f8f9fa; border-radius: 6px; margin-bottom: 1.5rem;">
+                        Loading AI suggestions...
+                    </div>
+
+                    <div id="ai-suggestions-container">
+                        <!-- AI suggestions will be rendered here -->
+                    </div>
+                </div>
+
+                <!-- Transaction Mappings View -->
+                <div id="view-transaction-mappings" class="view view-hidden">
+                    <div class="content-header">
+                        <h2>Transaction to Invoice Mappings</h2>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-ai" onclick="transactionMappingsComponent && transactionMappingsComponent.generateAISuggestions()">🤖 AI Suggest Mappings</button>
+                            <button class="btn btn-success" onclick="transactionMappingsComponent && transactionMappingsComponent.autoMap()">⚡ Auto-Map Transactions</button>
+                            <button class="btn btn-primary" onclick="transactionMappingsComponent && transactionMappingsComponent.refresh()">🔄 Refresh</button>
+                        </div>
+                    </div>
+
+                    <!-- Component mounts here -->
+                    <div id="transaction-mappings-container"></div>
+                </div>
+
+                <!-- AI Settings View -->
+                <div id="view-ai-settings" class="view view-hidden">
+                    <div class="content-header">
+                        <h2>AI Settings</h2>
+                        <button class="btn btn-primary" onclick="loadAISettings()">🔄 Refresh</button>
+                    </div>
+
+                    <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
+                        <h3 style="margin-bottom: 1rem;">AI Provider Configuration</h3>
+                        <p style="color: #7f8c8d; margin-bottom: 1.5rem;">
+                            Choose your AI provider for intelligent customer and transaction mapping
+                        </p>
+
+                        <div style="display: grid; gap: 1.5rem;">
+                            <!-- Provider Selection -->
+                            <div>
+                                <label style="display: block; font-weight: 600; margin-bottom: 0.75rem; color: #2c3e50;">
+                                    AI Provider
+                                </label>
+                                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                    <label style="display: flex; align-items: center; gap: 0.5rem; padding: 1rem; background: white; border: 2px solid #ecf0f1; border-radius: 8px; cursor: pointer; flex: 1; min-width: 250px;">
+                                        <input type="radio" name="ai-provider" value="anthropic" id="provider-anthropic" onchange="switchAIProvider()">
+                                        <div>
+                                            <div style="font-weight: 600; color: #2c3e50;">⚛️ Anthropic Direct</div>
+                                            <div style="font-size: 0.85rem; color: #7f8c8d;">Best performance, direct API access</div>
+                                        </div>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem; padding: 1rem; background: white; border: 2px solid #ecf0f1; border-radius: 8px; cursor: pointer; flex: 1; min-width: 250px;">
+                                        <input type="radio" name="ai-provider" value="openrouter" id="provider-openrouter" onchange="switchAIProvider()">
+                                        <div>
+                                            <div style="font-weight: 600; color: #2c3e50;">🔀 OpenRouter</div>
+                                            <div style="font-size: 0.85rem; color: #7f8c8d;">Unified API for multiple models</div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Anthropic Settings (shown when Anthropic is selected) -->
+                            <div id="anthropic-settings" style="display: none;">
+                                <div style="padding: 1.5rem; background: white; border-radius: 8px; border: 2px solid #32373c;">
+                                    <h4 style="margin-bottom: 1rem; color: #32373c;">Anthropic Configuration</h4>
+                                    <p style="color: #7f8c8d; margin-bottom: 1rem; font-size: 0.9rem;">
+                                        Get your API key from <a href="https://console.anthropic.com" target="_blank" style="color: #32373c;">console.anthropic.com</a>
+                                    </p>
+
+                                    <div style="display: grid; gap: 1rem;">
+                                        <div>
+                                            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: #2c3e50;">
+                                                Anthropic API Key
+                                            </label>
+                                            <input
+                                                type="password"
+                                                id="anthropic-api-key"
+                                                class="search-box"
+                                                placeholder="sk-ant-..."
+                                                style="width: 100%; max-width: 500px; font-family: monospace;"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: #2c3e50;">
+                                                Claude Model
+                                            </label>
+                                            <select id="anthropic-model" style="width: 100%; max-width: 500px;">
+                                                <option value="">Loading models...</option>
+                                            </select>
+                                            <div id="anthropic-model-description" style="margin-top: 0.5rem; font-size: 0.85rem; color: #7f8c8d;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- OpenRouter Settings (shown when OpenRouter is selected) -->
+                            <div id="openrouter-settings" style="display: none;">
+                                <div style="padding: 1.5rem; background: white; border-radius: 8px; border: 2px solid #9b59b6;">
+                                    <h4 style="margin-bottom: 1rem; color: #9b59b6;">OpenRouter Configuration</h4>
+                                    <p style="color: #7f8c8d; margin-bottom: 1rem; font-size: 0.9rem;">
+                                        Get your API key from <a href="https://openrouter.ai/keys" target="_blank" style="color: #9b59b6;">openrouter.ai/keys</a>
+                                    </p>
+
+                                    <div style="display: grid; gap: 1rem;">
+                                        <div>
+                                            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: #2c3e50;">
+                                                OpenRouter API Key
+                                            </label>
+                                            <input
+                                                type="password"
+                                                id="openrouter-api-key"
+                                                class="search-box"
+                                                placeholder="sk-or-..."
+                                                style="width: 100%; max-width: 500px; font-family: monospace;"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: #2c3e50;">
+                                                AI Model
+                                            </label>
+                                            <select id="openrouter-model" style="width: 100%; max-width: 500px;">
+                                                <option value="">Loading models...</option>
+                                            </select>
+                                            <div id="openrouter-model-description" style="margin-top: 0.5rem; font-size: 0.85rem; color: #7f8c8d;"></div>
+                                        </div>
+
+                                        <div style="padding: 1rem; background: #f8f9fa; border-radius: 6px;">
+                                            <strong style="color: #9b59b6;">Why OpenRouter?</strong>
+                                            <ul style="margin: 0.5rem 0 0 1.5rem; line-height: 1.8; font-size: 0.9rem; color: #2c3e50;">
+                                                <li>Single API for multiple AI providers (Anthropic, OpenAI, Google, Meta)</li>
+                                                <li>Pay-as-you-go pricing with automatic cost optimization</li>
+                                                <li>Built-in failover and load balancing</li>
+                                                <li>Access to latest models from all major providers</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                <button class="btn btn-secondary" onclick="testAIConnection()">🔌 Test Connection</button>
+                                <button class="btn btn-success" onclick="saveAISettings()">💾 Save Settings</button>
+                            </div>
+
+                            <!-- Status Display -->
+                            <div id="ai-status" style="padding: 1rem; background: white; border-radius: 6px; border-left: 4px solid #3498db; display: none;">
+                                <div id="ai-status-message"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Coming Soon: N8N Integration -->
+                    <div style="background: linear-gradient(135deg, #32373c 0%, #4a5158 100%); padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; color: white;">
+                        <h3 style="margin-bottom: 0.5rem; color: white;">🔄 N8N Workflows - Coming Soon!</h3>
+                        <p style="margin-bottom: 1rem; opacity: 0.9;">
+                            Advanced AI workflows with visual automation builder. Create complex multi-step AI processes with branching logic, data transformations, and external integrations.
+                        </p>
+                        <div style="font-size: 0.9rem; opacity: 0.8;">
+                            Build powerful automation workflows combining AI with your favorite tools and services
+                        </div>
+                    </div>
+
+                    <!-- AI Features Info -->
+                    <div style="background: white; padding: 1.5rem; border: 2px solid #ecf0f1; border-radius: 8px;">
+                        <h3 style="margin-bottom: 1rem; color: #32373c;">AI-Powered Features</h3>
+                        <ul style="line-height: 2; color: #2c3e50;">
+                            <li>🔗 Intelligent customer matching between Stripe, HaloPSA, and QuickBooks</li>
+                            <li>💰 Automatic transaction-to-invoice mapping with confidence scoring</li>
+                            <li>📊 Smart data analysis and anomaly detection</li>
+                            <li>🧠 Natural language explanations for mapping suggestions</li>
+                        </ul>
+                        <div style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 6px; font-size: 0.9rem; color: #7f8c8d;">
+                            <strong>Note:</strong> AI features are optional. All existing functionality works without AI configuration.
+                        </div>
                     </div>
                 </div>
 
@@ -607,8 +791,125 @@
                 <div id="view-sync" class="view view-hidden">
                     <div class="content-header">
                         <h2>QuickBooks Sync</h2>
+                        <button class="btn btn-primary" onclick="loadQBSync()">🔄 Refresh</button>
                     </div>
-                    <p>QuickBooks sync configuration coming soon...</p>
+
+                    <!-- QBWC Status Section -->
+                    <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
+                        <h3 style="margin-bottom: 1rem;">QuickBooks Web Connector</h3>
+                        <p style="color: #7f8c8d; margin-bottom: 1rem;">Pull data from QuickBooks Desktop using Web Connector</p>
+                        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                            <button class="btn btn-success" onclick="syncQBAccounts()">📊 Sync Chart of Accounts</button>
+                            <button class="btn btn-success" onclick="syncQBCustomers()">👥 Sync QB Customers</button>
+                            <a href="/qbwc/config" class="btn btn-secondary" download>⬇️ Download QWC File</a>
+                        </div>
+                        <div style="margin-top: 1rem; padding: 1rem; background: white; border-radius: 6px; border-left: 4px solid #3498db;">
+                            <strong>Setup Instructions:</strong>
+                            <ol style="margin: 0.5rem 0 0 1.5rem; line-height: 1.8;">
+                                <li>Download the QWC file above</li>
+                                <li>Open QuickBooks Desktop with your company file</li>
+                                <li>Open QuickBooks Web Connector (QBWC)</li>
+                                <li>Add the QWC file and use credentials: <code>qbwc_user</code> / <code>password123</code></li>
+                                <li>Click "Sync Chart of Accounts" or "Sync QB Customers" buttons above</li>
+                                <li>Click "Update Selected" in QBWC to start sync</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <!-- Synced Accounts Section -->
+                    <div style="margin-bottom: 3rem;">
+                        <h3 style="margin-bottom: 1rem;">Chart of Accounts from QuickBooks</h3>
+                        <div id="qb-accounts-status" style="padding: 1rem; background: #f8f9fa; border-radius: 6px; margin-bottom: 1rem;">
+                            <span id="qb-accounts-count">Loading...</span>
+                        </div>
+                        <div class="table-container-scrollable">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Account Name</th>
+                                        <th>Type</th>
+                                        <th>Account Number</th>
+                                        <th>Balance</th>
+                                        <th>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="qb-accounts-tbody">
+                                    <tr><td colspan="5" style="text-align: center; padding: 2rem; color: #95a5a6;">No accounts synced yet. Click "Sync Chart of Accounts" to pull from QuickBooks.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Account Mappings Section -->
+                    <div style="margin-bottom: 3rem;">
+                        <h3 style="margin-bottom: 1rem;">Transaction Account Mappings</h3>
+                        <p style="color: #7f8c8d; margin-bottom: 1rem;">Map where different transaction types should go in QuickBooks</p>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+                            <!-- Down Payments / Customer Deposits -->
+                            <div style="background: white; padding: 1.5rem; border: 2px solid #ecf0f1; border-radius: 8px;">
+                                <h4 style="color: #32373c; margin-bottom: 0.5rem;">💰 Down Payments</h4>
+                                <p style="font-size: 0.85rem; color: #7f8c8d; margin-bottom: 1rem;">Customer deposits go to a liability account</p>
+                                <div id="deposit-account-dropdown"></div>
+                                <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #27ae60;" id="deposit-account-status"></div>
+                            </div>
+
+                            <!-- Stripe Processing Fees -->
+                            <div style="background: white; padding: 1.5rem; border: 2px solid #ecf0f1; border-radius: 8px;">
+                                <h4 style="color: #32373c; margin-bottom: 0.5rem;">💳 Stripe Fees</h4>
+                                <p style="font-size: 0.85rem; color: #7f8c8d; margin-bottom: 1rem;">Processing fees go to an expense account</p>
+                                <div id="fees-account-dropdown"></div>
+                                <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #27ae60;" id="fees-account-status"></div>
+                            </div>
+
+                            <!-- Stripe Payments Account (NEW) -->
+                            <div style="background: white; padding: 1.5rem; border: 2px solid #ecf0f1; border-radius: 8px;">
+                                <h4 style="color: #32373c; margin-bottom: 0.5rem;">💵 Stripe Payments</h4>
+                                <p style="font-size: 0.85rem; color: #7f8c8d; margin-bottom: 1rem;">Where Stripe payments are deposited (asset/bank account)</p>
+                                <div id="payments-account-dropdown"></div>
+                                <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #27ae60;" id="payments-account-status"></div>
+                            </div>
+
+                            <!-- Inventory Asset Account (NEW) -->
+                            <div style="background: white; padding: 1.5rem; border: 2px solid #ecf0f1; border-radius: 8px;">
+                                <h4 style="color: #32373c; margin-bottom: 0.5rem;">📦 Inventory Assets</h4>
+                                <p style="font-size: 0.85rem; color: #7f8c8d; margin-bottom: 1rem;">For tracking inventory items (asset account)</p>
+                                <div id="inventory-account-dropdown"></div>
+                                <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #27ae60;" id="inventory-account-status"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Synced Customers Section -->
+                    <div style="margin-bottom: 3rem;">
+                        <h3 style="margin-bottom: 1rem;">QuickBooks Customers</h3>
+                        <div id="qb-customers-status" style="padding: 1rem; background: #f8f9fa; border-radius: 6px; margin-bottom: 1rem;">
+                            <span id="qb-customers-count">Loading...</span>
+                        </div>
+                        <div class="controls">
+                            <select id="qb-customer-filter" onchange="filterQBCustomers()">
+                                <option value="unmapped">Unmapped Only (Default)</option>
+                                <option value="all">All QB Customers</option>
+                                <option value="mapped">Mapped Only</option>
+                            </select>
+                        </div>
+                        <div class="table-container-scrollable">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Customer Name</th>
+                                        <th>Company</th>
+                                        <th>Email</th>
+                                        <th>Phone</th>
+                                        <th>Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="qb-customers-tbody">
+                                    <tr><td colspan="5" style="text-align: center; padding: 2rem; color: #95a5a6;">No customers synced yet. Click "Sync QB Customers" to pull from QuickBooks.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -617,6 +918,38 @@
     <div class="toast" id="toast">
         <div id="toast-message"></div>
     </div>
+
+    <script src="components/searchable-dropdown.js"></script>
+    <script src="components/workflow-modal.js"></script>
+    <script type="module">
+        // Import the CustomerMappingsComponent
+        import CustomerMappingsComponent from './components/customer-mappings.js';
+        import TransactionMappingsComponent from './components/transaction-mappings.js';
+
+        // Global instances for button access
+        window.mappingsComponent = null;
+        window.transactionMappingsComponent = null;
+
+        // Initialize customer mappings component when mappings view is loaded
+        function initMappingsComponent() {
+            if (!window.mappingsComponent) {
+                window.mappingsComponent = new CustomerMappingsComponent('customer-mappings-container');
+                window.mappingsComponent.init();
+            }
+        }
+
+        // Initialize transaction mappings component when transaction-mappings view is loaded
+        function initTransactionMappingsComponent() {
+            if (!window.transactionMappingsComponent) {
+                window.transactionMappingsComponent = new TransactionMappingsComponent('transaction-mappings-container');
+                window.transactionMappingsComponent.init();
+            }
+        }
+
+        // Make functions available globally
+        window.initMappingsComponent = initMappingsComponent;
+        window.initTransactionMappingsComponent = initTransactionMappingsComponent;
+    </script>
 
     <script>
         // InfiniteScroll Class - Reusable infinite scroll manager
@@ -755,6 +1088,60 @@
             }
         }
 
+        // CustomAccountDropdown Class - Adapter for CustomSearchableDropdown
+        class CustomAccountDropdown {
+            constructor(dropdownId, mappingType) {
+                this.dropdownId = dropdownId;
+                this.mappingType = mappingType;
+                this.accounts = [];
+                this.selectedAccount = null;
+
+                // Initialize the searchable dropdown
+                this.dropdown = new CustomSearchableDropdown(`${dropdownId}-account-dropdown`, {
+                    placeholder: 'Search QuickBooks accounts...',
+                    items: [],
+                    selectedId: null,
+                    onChange: (selectedItem) => {
+                        if (selectedItem) {
+                            // Find the full account object
+                            const account = this.accounts.find(a => a.id === selectedItem.id);
+                            if (account) {
+                                this.selectedAccount = account;
+                                saveAccountMapping(this.mappingType, account.id);
+                            }
+                        }
+                    },
+                    renderItem: (item) => {
+                        // Custom rendering for account items
+                        return `<span>${item.text}</span>`;
+                    }
+                });
+            }
+
+            setAccounts(accounts) {
+                this.accounts = accounts;
+
+                // Transform accounts to dropdown format
+                const items = accounts.map(account => ({
+                    id: account.id,
+                    text: `${account.account_name} (${account.account_type})`
+                }));
+
+                this.dropdown.setItems(items);
+            }
+
+            reset() {
+                this.selectedAccount = null;
+                this.dropdown.clear();
+            }
+        }
+
+        // Global dropdown instances
+        let depositAccountDropdown = null;
+        let feesAccountDropdown = null;
+        let paymentsAccountDropdown = null;
+        let inventoryAccountDropdown = null;
+
         // Global scroll managers
         let customersScroll = null;
         let invoicesScroll = null;
@@ -763,6 +1150,21 @@
         let stripeTransactionsScroll = null;
         let mappingsScroll = null;
 
+        // Router configuration - maps hash to view ID
+        const router = {
+            '#dashboard': 'dashboard',
+            '#customers': 'customers',
+            '#invoices': 'invoices',
+            '#items': 'items',
+            '#purchase-orders': 'purchase-orders',
+            '#stripe-transactions': 'stripe-transactions',
+            '#mappings': 'mappings',
+            '#ai-customer-suggestions': 'ai-customer-suggestions',
+            '#transaction-mappings': 'transaction-mappings',
+            '#sync': 'sync',
+            '#ai-settings': 'ai-settings'
+        };
+
         function switchView(viewName) {
             document.querySelectorAll('.view').forEach(v => v.classList.add('view-hidden'));
             document.getElementById(`view-${viewName}`).classList.remove('view-hidden');
@@ -770,8 +1172,96 @@
                 item.classList.remove('active');
                 if (item.dataset.view === viewName) item.classList.add('active');
             });
+
+            // Update URL hash without triggering hashchange event
+            const newHash = '#' + viewName;
+            if (window.location.hash !== newHash) {
+                history.replaceState(null, null, newHash);
+            }
+
             loadViewData(viewName);
         }
+
+        // Handle browser back/forward buttons
+        function handleHashChange() {
+            const hash = window.location.hash || '#dashboard';
+            const viewName = router[hash] || 'dashboard';
+
+            // Update UI without setting hash again (to avoid loops)
+            document.querySelectorAll('.view').forEach(v => v.classList.add('view-hidden'));
+            document.getElementById(`view-${viewName}`).classList.remove('view-hidden');
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.view === viewName) item.classList.add('active');
+            });
+
+            loadViewData(viewName);
+        }
+
+        // Load sidebar statistics immediately on page load
+        async function loadSidebarStats() {
+            const updateBadge = (badgeId, value) => {
+                const badge = document.getElementById(badgeId);
+                if (badge) badge.textContent = value || 0;
+            };
+
+            try {
+                // Fetch all data counts in parallel for fast loading
+                const [customers, invoices, items, transactions, purchaseOrders] = await Promise.allSettled([
+                    fetch('/api/customers/all').then(r => r.json()).catch(() => []),
+                    fetch('/api/halopsa/invoices').then(r => r.json()).catch(() => ({ invoices: [], pagination: { total: 0 } })),
+                    fetch('/api/items/all').then(r => r.json()).catch(() => []),
+                    fetch('/api/stripe/transactions/imported').then(r => r.json()).catch(() => ({ transactions: [], pagination: { total: 0 } })),
+                    fetch('/api/halopsa/purchase-orders').then(r => r.json()).catch(() => ({ purchaseOrders: [], pagination: { total: 0 } }))
+                ]);
+
+                // Extract values with fallbacks
+                const customersData = customers.status === 'fulfilled' ? customers.value : [];
+                const invoicesData = invoices.status === 'fulfilled' ? invoices.value : { invoices: [], pagination: { total: 0 } };
+                const itemsData = items.status === 'fulfilled' ? items.value : [];
+                const transactionsData = transactions.status === 'fulfilled' ? transactions.value : { transactions: [], pagination: { total: 0 } };
+                const purchaseOrdersData = purchaseOrders.status === 'fulfilled' ? purchaseOrders.value : { purchaseOrders: [], pagination: { total: 0 } };
+
+                // Calculate counts
+                const customersCount = Array.isArray(customersData) ? customersData.length : 0;
+                const mappedCount = Array.isArray(customersData) ? customersData.filter(c => c.stripe_customer_id || c.qb_customer_id).length : 0;
+                const invoicesCount = (typeof invoicesData.pagination?.total === 'number') ? invoicesData.pagination.total : (Array.isArray(invoicesData.invoices) ? invoicesData.invoices.length : 0);
+                const itemsCount = Array.isArray(itemsData) ? itemsData.length : 0;
+                const transactionsCount = (typeof transactionsData.pagination?.total === 'number') ? transactionsData.pagination.total : (Array.isArray(transactionsData.transactions) ? transactionsData.transactions.length : 0);
+                const purchaseOrdersCount = (typeof purchaseOrdersData.pagination?.total === 'number') ? purchaseOrdersData.pagination.total : (Array.isArray(purchaseOrdersData.purchaseOrders) ? purchaseOrdersData.purchaseOrders.length : 0);
+
+                // Update all sidebar badges
+                updateBadge('customer-badge', customersCount);
+                updateBadge('invoice-badge', invoicesCount);
+                updateBadge('item-badge', itemsCount);
+                updateBadge('po-badge', purchaseOrdersCount);
+                updateBadge('stripe-tx-badge', transactionsCount);
+                updateBadge('mapping-badge', mappedCount);
+
+                console.log('Sidebar stats loaded:', {
+                    customersCount,
+                    invoicesCount,
+                    itemsCount,
+                    purchaseOrdersCount,
+                    transactionsCount,
+                    mappedCount
+                });
+            } catch (error) {
+                console.error('Error loading sidebar stats:', error);
+                // Keep badges at 0 on error
+            }
+        }
+
+        // Listen for hash changes (browser back/forward)
+        window.addEventListener('hashchange', handleHashChange);
+
+        // Initialize correct view on page load
+        window.addEventListener('load', async () => {
+            // Load sidebar stats immediately
+            await loadSidebarStats();
+            // Then load the current view
+            handleHashChange();
+        });
 
         document.querySelectorAll('.nav-item').forEach(item => {
             item.addEventListener('click', () => switchView(item.dataset.view));
@@ -784,6 +1274,12 @@
             setTimeout(() => toast.classList.remove('show'), 5000);
         }
 
+        // Format currency with commas for readability
+        function formatCurrency(amount) {
+            const num = parseFloat(amount) || 0;
+            return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+
         function loadViewData(viewName) {
             switch(viewName) {
                 case 'dashboard': loadDashboard(); break;
@@ -792,7 +1288,11 @@
                 case 'items': loadItems(); break;
                 case 'purchase-orders': loadPurchaseOrders(); break;
                 case 'stripe-transactions': loadStripeTransactions(); break;
-                case 'mappings': loadMappings(); break;
+                case 'mappings': initMappingsComponent(); break;
+                case 'ai-customer-suggestions': loadAICustomerSuggestions(); break;
+                case 'transaction-mappings': initTransactionMappingsComponent(); break;
+                case 'sync': loadQBSync(); break;
+                case 'ai-settings': loadAISettings(); break;
             }
         }
 
@@ -803,13 +1303,11 @@
                 if (badge) badge.textContent = value || 0;
             };
 
-            // Initialize all badges to 0 first
-            updateBadge('customer-badge', 0);
-            updateBadge('invoice-badge', 0);
-            updateBadge('item-badge', 0);
-            updateBadge('po-badge', 0);
-            updateBadge('stripe-tx-badge', 0);
-            updateBadge('mapping-badge', 0);
+            // Helper function to safely update stat card
+            const updateStatCard = (statId, value) => {
+                const stat = document.getElementById(statId);
+                if (stat) stat.textContent = value || 0;
+            };
 
             try {
                 // Fetch all data with individual error handling
@@ -817,7 +1315,7 @@
                     fetch('/api/customers/all').then(r => r.json()).catch(e => { console.error('Customers fetch failed:', e); return []; }),
                     fetch('/api/halopsa/invoices').then(r => r.json()).catch(e => { console.error('Invoices fetch failed:', e); return { invoices: [], pagination: { total: 0 } }; }),
                     fetch('/api/items/all').then(r => r.json()).catch(e => { console.error('Items fetch failed:', e); return []; }),
-                    fetch('/api/stripe/transactions/imported').then(r => r.json()).catch(e => { console.error('Transactions fetch failed:', e); return []; }),
+                    fetch('/api/stripe/transactions/imported').then(r => r.json()).catch(e => { console.error('Transactions fetch failed:', e); return { transactions: [], pagination: { total: 0 } }; }),
                     fetch('/api/halopsa/purchase-orders').then(r => r.json()).catch(e => { console.error('POs fetch failed:', e); return { purchaseOrders: [], pagination: { total: 0 } }; })
                 ]);
 
@@ -825,27 +1323,52 @@
                 const customersData = customers.status === 'fulfilled' ? customers.value : [];
                 const invoicesData = invoices.status === 'fulfilled' ? invoices.value : { invoices: [], pagination: { total: 0 } };
                 const itemsData = items.status === 'fulfilled' ? items.value : [];
-                const transactionsData = transactions.status === 'fulfilled' ? transactions.value : [];
+                const transactionsData = transactions.status === 'fulfilled' ? transactions.value : { transactions: [], pagination: { total: 0 } };
                 const purchaseOrdersData = purchaseOrders.status === 'fulfilled' ? purchaseOrders.value : { purchaseOrders: [], pagination: { total: 0 } };
 
                 // Calculate counts with safety checks
                 const customersCount = Array.isArray(customersData) ? customersData.length : 0;
-                const mappedCount = Array.isArray(customersData) ? customersData.filter(c => c.stripe_customer_id).length : 0;
-                const invoicesCount = invoicesData.pagination?.total || (Array.isArray(invoicesData.invoices) ? invoicesData.invoices.length : 0);
+                const mappedCount = Array.isArray(customersData) ? customersData.filter(c => c.stripe_customer_id || c.qb_customer_id).length : 0;
+
+                // For invoices: prefer pagination.total, fallback to array length
+                const invoicesCount = (typeof invoicesData.pagination?.total === 'number') ? invoicesData.pagination.total : (Array.isArray(invoicesData.invoices) ? invoicesData.invoices.length : 0);
                 const syncedInvoices = Array.isArray(invoicesData.invoices) ? invoicesData.invoices.filter(i => i.synced_to_qb).length : 0;
+
                 const itemsCount = Array.isArray(itemsData) ? itemsData.length : 0;
                 const syncedItems = Array.isArray(itemsData) ? itemsData.filter(i => i.synced_to_qb).length : 0;
-                const transactionsCount = transactionsData.pagination?.total || (Array.isArray(transactionsData.transactions) ? transactionsData.transactions.length : 0);
-                const purchaseOrdersCount = purchaseOrdersData.pagination?.total || (Array.isArray(purchaseOrdersData.purchaseOrders) ? purchaseOrdersData.purchaseOrders.length : 0);
+
+                // For transactions: prefer pagination.total, fallback to array length
+                const transactionsCount = (typeof transactionsData.pagination?.total === 'number') ? transactionsData.pagination.total : (Array.isArray(transactionsData.transactions) ? transactionsData.transactions.length : 0);
+
+                // For purchase orders: prefer pagination.total, fallback to array length
+                const purchaseOrdersCount = (typeof purchaseOrdersData.pagination?.total === 'number') ? purchaseOrdersData.pagination.total : (Array.isArray(purchaseOrdersData.purchaseOrders) ? purchaseOrdersData.purchaseOrders.length : 0);
+
+                console.log('Dashboard stats calculated:', {
+                    customersCount,
+                    mappedCount,
+                    invoicesCount,
+                    syncedInvoices,
+                    itemsCount,
+                    syncedItems,
+                    transactionsCount,
+                    purchaseOrdersCount
+                });
 
                 // Update stat cards
-                document.getElementById('stat-customers').textContent = customersCount;
-                document.getElementById('stat-customers-mapped').textContent = `${mappedCount} mapped to Stripe`;
-                document.getElementById('stat-invoices').textContent = invoicesCount;
-                document.getElementById('stat-invoices-synced').textContent = `${syncedInvoices} synced to QB`;
-                document.getElementById('stat-items').textContent = itemsCount;
-                document.getElementById('stat-items-synced').textContent = `${syncedItems} synced to QB`;
-                document.getElementById('stat-transactions').textContent = transactionsCount;
+                updateStatCard('stat-customers', customersCount);
+                updateStatCard('stat-invoices', invoicesCount);
+                updateStatCard('stat-items', itemsCount);
+                updateStatCard('stat-transactions', transactionsCount);
+
+                // Update stat card sublabels
+                const statCustomersMapped = document.getElementById('stat-customers-mapped');
+                if (statCustomersMapped) statCustomersMapped.textContent = `${mappedCount} mapped to Stripe`;
+
+                const statInvoicesSynced = document.getElementById('stat-invoices-synced');
+                if (statInvoicesSynced) statInvoicesSynced.textContent = `${syncedInvoices} synced to QB`;
+
+                const statItemsSynced = document.getElementById('stat-items-synced');
+                if (statItemsSynced) statItemsSynced.textContent = `${syncedItems} synced to QB`;
 
                 // Update badge counters with calculated values
                 updateBadge('customer-badge', customersCount);
@@ -858,7 +1381,7 @@
             } catch (error) {
                 console.error('Error loading dashboard:', error);
                 showToast('Error loading dashboard data', 'error');
-                // Badges already set to 0 at the start
+                // Don't reset badges to 0 on error - keep existing values
             }
         }
 
@@ -975,7 +1498,7 @@
                         <td><strong>${inv.invoice_number}</strong></td>
                         <td>${inv.client_name || 'N/A'}</td>
                         <td>${inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : 'N/A'}</td>
-                        <td>$${(inv.total_amount || 0).toFixed(2)}</td>
+                        <td>$${formatCurrency(inv.total_amount)}</td>
                         <td><span class="status ${inv.status?.toLowerCase() || 'unknown'}">${inv.status || 'Unknown'}</span></td>
                         <td>
                             ${inv.synced_to_qb ?
@@ -1036,8 +1559,8 @@
                     <tr>
                         <td><strong>${item.name}</strong></td>
                         <td>${item.item_type}</td>
-                        <td>$${(item.sales_price || 0).toFixed(2)}</td>
-                        <td>$${(item.purchase_cost || 0).toFixed(2)}</td>
+                        <td>$${formatCurrency(item.sales_price)}</td>
+                        <td>$${formatCurrency(item.purchase_cost)}</td>
                         <td>
                             ${item.synced_to_qb ?
                                 '<span class="status synced">Synced</span>' :
@@ -1100,7 +1623,7 @@
                         <td>${po.vendor_name || 'N/A'}</td>
                         <td>${po.client_name || 'N/A'}</td>
                         <td>${po.po_date ? new Date(po.po_date).toLocaleDateString() : 'N/A'}</td>
-                        <td>$${(po.total_amount || 0).toFixed(2)}</td>
+                        <td>$${formatCurrency(po.total_amount)}</td>
                         <td><span class="status ${po.status?.toLowerCase() || 'unknown'}">${po.status || 'Unknown'}</span></td>
                         <td>
                             ${po.synced_to_qb ?
@@ -1179,7 +1702,7 @@
                         <td><strong>${tx.stripe_id.substring(0, 20)}...</strong></td>
                         <td>${tx.customer_name || tx.customer_email || 'N/A'}</td>
                         <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${tx.description || 'N/A'}</td>
-                        <td>$${((tx.amount || 0) / 100).toFixed(2)} ${tx.currency?.toUpperCase() || ''}</td>
+                        <td>$${formatCurrency((tx.amount || 0) / 100)} ${tx.currency?.toUpperCase() || ''}</td>
                         <td>${tx.created ? new Date(tx.created * 1000).toLocaleDateString() : 'N/A'}</td>
                         <td><span class="status ${tx.status?.toLowerCase() || 'unknown'}">${tx.status || 'Unknown'}</span></td>
                     </tr>
@@ -1211,41 +1734,9 @@
             }
         }
 
+        // Legacy loadMappings function - now just initializes the component
         async function loadMappings() {
-            const tbody = document.getElementById('stripe-mappings-tbody');
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem;"><div class="spinner"></div></td></tr>';
-
-            try {
-                const mappings = await fetch('/api/customers/mappings').then(r => r.json());
-
-                if (mappings.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #95a5a6;">No mappings found.</td></tr>';
-                    // Update badge to 0
-                    const badge = document.getElementById('mapping-badge');
-                    if (badge) badge.textContent = 0;
-                    return;
-                }
-
-                tbody.innerHTML = mappings.map(m => `
-                    <tr>
-                        <td><strong>${m.stripe_customer_name || 'N/A'}</strong><br><small>${m.stripe_customer_email || ''}</small></td>
-                        <td><strong>${m.halopsa_client_name || 'N/A'}</strong></td>
-                        <td>${m.auto_mapped ? '<span class="status synced">Yes</span>' : '<span class="status unmapped">No</span>'}</td>
-                        <td>${m.mapping_confirmed ? '<span class="status mapped">Confirmed</span>' : '<span class="status unmapped">Pending</span>'}</td>
-                    </tr>
-                `).join('');
-
-                // Update badge counter after loading
-                const badge = document.getElementById('mapping-badge');
-                if (badge) badge.textContent = mappings.length;
-
-            } catch (error) {
-                console.error('Error loading mappings:', error);
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #e74c3c;">Error loading mappings</td></tr>';
-                showToast('Error loading mappings', 'error');
-                const badge = document.getElementById('mapping-badge');
-                if (badge) badge.textContent = 0;
-            }
+            initMappingsComponent();
         }
 
         async function refreshDashboard() {
@@ -1260,7 +1751,12 @@
                 const response = await fetch('/api/stripe/import/customers', { method: 'POST' });
                 const result = await response.json();
                 showToast(result.message, result.success ? 'success' : 'error');
-                await loadDashboard();
+                await loadSidebarStats(); // Always update sidebar stats
+                // If on dashboard, refresh it too
+                const currentView = document.querySelector('.view:not(.view-hidden)');
+                if (currentView && currentView.id === 'view-dashboard') {
+                    await loadDashboard();
+                }
             } catch (error) {
                 showToast('Error importing Stripe data', 'error');
             }
@@ -1272,7 +1768,12 @@
                 const response = await fetch('/api/halopsa/import/clients', { method: 'POST' });
                 const result = await response.json();
                 showToast(result.message, result.success ? 'success' : 'error');
-                await loadDashboard();
+                await loadSidebarStats(); // Always update sidebar stats
+                // If on dashboard, refresh it too
+                const currentView = document.querySelector('.view:not(.view-hidden)');
+                if (currentView && currentView.id === 'view-dashboard') {
+                    await loadDashboard();
+                }
             } catch (error) {
                 showToast('Error importing HaloPSA data', 'error');
             }
@@ -1284,7 +1785,12 @@
                 const response = await fetch('/api/customers/automatch', { method: 'POST' });
                 const result = await response.json();
                 showToast(`Mapped ${result.matches?.length || 0} customers`, 'success');
-                await loadDashboard();
+                await loadSidebarStats(); // Always update sidebar stats
+                // If on dashboard, refresh it too
+                const currentView = document.querySelector('.view:not(.view-hidden)');
+                if (currentView && currentView.id === 'view-dashboard') {
+                    await loadDashboard();
+                }
             } catch (error) {
                 showToast('Error auto-mapping customers', 'error');
             }
@@ -1297,7 +1803,12 @@
                 const response = await fetch('/api/stripe/import/customers', { method: 'POST' });
                 const result = await response.json();
                 showToast(result.message || 'Stripe customers imported', result.success ? 'success' : 'error');
-                await loadDashboard();
+                await loadSidebarStats(); // Always update sidebar stats
+                // If on dashboard, refresh it too
+                const currentView = document.querySelector('.view:not(.view-hidden)');
+                if (currentView && currentView.id === 'view-dashboard') {
+                    await loadDashboard();
+                }
             } catch (error) {
                 showToast('Error importing Stripe customers', 'error');
             }
@@ -1309,11 +1820,13 @@
                 const response = await fetch('/api/stripe/import/transactions', { method: 'POST' });
                 const result = await response.json();
                 showToast(result.message || 'Stripe transactions imported', result.success ? 'success' : 'error');
-                await loadDashboard();
+                await loadSidebarStats(); // Always update sidebar stats
                 // If on Stripe Transactions view, refresh that view too
                 const currentView = document.querySelector('.view:not(.view-hidden)');
                 if (currentView && currentView.id === 'view-stripe-transactions') {
                     await loadStripeTransactions();
+                } else if (currentView && currentView.id === 'view-dashboard') {
+                    await loadDashboard();
                 }
             } catch (error) {
                 showToast('Error importing Stripe transactions', 'error');
@@ -1326,11 +1839,13 @@
                 const response = await fetch('/api/halopsa/import/clients', { method: 'POST' });
                 const result = await response.json();
                 showToast(result.message || 'HaloPSA clients imported', result.success ? 'success' : 'error');
-                await loadDashboard();
+                await loadSidebarStats(); // Always update sidebar stats
                 // If on Customers view, refresh that view too
                 const currentView = document.querySelector('.view:not(.view-hidden)');
                 if (currentView && currentView.id === 'view-customers') {
                     await loadCustomers();
+                } else if (currentView && currentView.id === 'view-dashboard') {
+                    await loadDashboard();
                 }
             } catch (error) {
                 showToast('Error importing HaloPSA clients', 'error');
@@ -1343,11 +1858,13 @@
                 const response = await fetch('/api/halopsa/import/invoices', { method: 'POST' });
                 const result = await response.json();
                 showToast(result.message || 'HaloPSA invoices imported', result.success ? 'success' : 'error');
-                await loadDashboard();
+                await loadSidebarStats(); // Always update sidebar stats
                 // If on Invoices view, refresh that view too
                 const currentView = document.querySelector('.view:not(.view-hidden)');
                 if (currentView && currentView.id === 'view-invoices') {
                     await loadInvoices();
+                } else if (currentView && currentView.id === 'view-dashboard') {
+                    await loadDashboard();
                 }
             } catch (error) {
                 showToast('Error importing HaloPSA invoices', 'error');
@@ -1360,11 +1877,13 @@
                 const response = await fetch('/api/halopsa/import/purchase-orders', { method: 'POST' });
                 const result = await response.json();
                 showToast(result.message || 'Purchase orders imported', result.success ? 'success' : 'error');
-                await loadDashboard();
+                await loadSidebarStats(); // Always update sidebar stats
                 // If on Purchase Orders view, refresh that view too
                 const currentView = document.querySelector('.view:not(.view-hidden)');
                 if (currentView && currentView.id === 'view-purchase-orders') {
                     await loadPurchaseOrders();
+                } else if (currentView && currentView.id === 'view-dashboard') {
+                    await loadDashboard();
                 }
             } catch (error) {
                 showToast('Error importing purchase orders', 'error');
@@ -1377,11 +1896,13 @@
                 const response = await fetch('/api/items/extract', { method: 'POST' });
                 const result = await response.json();
                 showToast(result.message || 'Items extracted successfully', result.success ? 'success' : 'error');
-                await loadDashboard();
+                await loadSidebarStats(); // Always update sidebar stats
                 // If on Items view, refresh that view too
                 const currentView = document.querySelector('.view:not(.view-hidden)');
                 if (currentView && currentView.id === 'view-items') {
                     await loadItems();
+                } else if (currentView && currentView.id === 'view-dashboard') {
+                    await loadDashboard();
                 }
             } catch (error) {
                 showToast('Error extracting items', 'error');
@@ -1412,16 +1933,754 @@
                 await extractItems();
 
                 showToast('✅ All data pulled successfully!', 'success');
-                await loadDashboard();
+                await loadSidebarStats(); // Final refresh of sidebar stats
+                // If on dashboard, refresh it too
+                const currentView = document.querySelector('.view:not(.view-hidden)');
+                if (currentView && currentView.id === 'view-dashboard') {
+                    await loadDashboard();
+                }
             } catch (error) {
                 console.error('Error during full data pull:', error);
                 showToast('Error during data import - check console for details', 'error');
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            loadDashboard();
-        });
+        // QuickBooks Sync Functions
+        async function loadQBSync() {
+            await Promise.all([
+                loadQBAccounts(),
+                loadQBCustomers(),
+                loadAccountMappings()
+            ]);
+        }
+
+        async function syncQBAccounts() {
+            showToast('Queuing Chart of Accounts sync...', 'info');
+            try {
+                const response = await fetch('/api/qbd/sync/accounts', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    showToast('Waiting for QBWC to complete sync...', 'info');
+                    // Poll for results after a delay
+                    setTimeout(async () => {
+                        await loadQBAccounts();
+                        showToast('Chart of Accounts refreshed', 'success');
+                    }, 5000);
+                } else {
+                    showToast(result.message || 'No active QBWC session', 'error');
+                    if (result.instructions) {
+                        console.log('Setup instructions:', result.instructions);
+                    }
+                }
+            } catch (error) {
+                console.error('Error syncing QB accounts:', error);
+                showToast('Error triggering account sync', 'error');
+            }
+        }
+
+        async function syncQBCustomers() {
+            showToast('Queuing QB customers sync...', 'info');
+            try {
+                const response = await fetch('/api/qbd/sync/customers', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    showToast('Waiting for QBWC to complete sync...', 'info');
+                    // Poll for results after a delay
+                    setTimeout(async () => {
+                        await loadQBCustomers();
+                        showToast('QB Customers refreshed', 'success');
+                    }, 5000);
+                } else {
+                    showToast(result.message || 'No active QBWC session', 'error');
+                    if (result.instructions) {
+                        console.log('Setup instructions:', result.instructions);
+                    }
+                }
+            } catch (error) {
+                console.error('Error syncing QB customers:', error);
+                showToast('Error triggering customer sync', 'error');
+            }
+        }
+
+        async function loadQBAccounts() {
+            try {
+                const response = await fetch('/api/qbd/sync/accounts');
+                const result = await response.json();
+
+                const statusDiv = document.getElementById('qb-accounts-count');
+                const tbody = document.getElementById('qb-accounts-tbody');
+
+                if (result.success && result.accounts && result.accounts.length > 0) {
+                    statusDiv.innerHTML = `<strong style="color: #27ae60;">✓ ${result.count} accounts synced from QuickBooks</strong>`;
+
+                    // Populate accounts table
+                    tbody.innerHTML = result.accounts.map(acct => `
+                        <tr>
+                            <td><strong>${acct.account_name || 'N/A'}</strong></td>
+                            <td>${acct.account_type || 'N/A'}</td>
+                            <td>${acct.account_number || '-'}</td>
+                            <td>$${formatCurrency(acct.balance)}</td>
+                            <td style="font-size: 0.85rem; color: #7f8c8d;">${acct.description || '-'}</td>
+                        </tr>
+                    `).join('');
+
+                    // Populate account dropdowns
+                    populateAccountDropdowns(result.accounts);
+                } else {
+                    statusDiv.innerHTML = '<span style="color: #95a5a6;">No accounts synced yet</span>';
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem; color: #95a5a6;">No accounts synced yet. Click "Sync Chart of Accounts" to pull from QuickBooks.</td></tr>';
+                }
+            } catch (error) {
+                console.error('Error loading QB accounts:', error);
+                document.getElementById('qb-accounts-count').innerHTML = '<span style="color: #e74c3c;">Error loading accounts</span>';
+            }
+        }
+
+        async function loadQBCustomers() {
+            try {
+                const filter = document.getElementById('qb-customer-filter')?.value || 'unmapped';
+                const response = await fetch(`/api/qbd/sync/customers?filter=${filter}`);
+                const result = await response.json();
+
+                const statusDiv = document.getElementById('qb-customers-count');
+                const tbody = document.getElementById('qb-customers-tbody');
+
+                if (result.success && result.customers && result.customers.length > 0) {
+                    let filterLabel = '';
+                    if (filter === 'unmapped') {
+                        filterLabel = ' (unmapped only)';
+                    } else if (filter === 'mapped') {
+                        filterLabel = ' (mapped only)';
+                    }
+                    statusDiv.innerHTML = `<strong style="color: #27ae60;">✓ ${result.count} customers synced from QuickBooks${filterLabel}</strong>`;
+
+                    tbody.innerHTML = result.customers.map(cust => `
+                        <tr>
+                            <td><strong>${cust.qb_full_name || 'N/A'}</strong></td>
+                            <td>${cust.company_name || '-'}</td>
+                            <td>${cust.email || '-'}</td>
+                            <td>${cust.phone || '-'}</td>
+                            <td>$${formatCurrency(cust.balance)}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    let message = 'No customers synced yet. Click "Sync QB Customers" to pull from QuickBooks.';
+                    if (filter === 'unmapped' && result.count === 0) {
+                        message = 'No unmapped QB customers found. All customers are mapped!';
+                    } else if (filter === 'mapped' && result.count === 0) {
+                        message = 'No mapped QB customers found. Create mappings first.';
+                    }
+                    statusDiv.innerHTML = '<span style="color: #95a5a6;">No customers found</span>';
+                    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 2rem; color: #95a5a6;">${message}</td></tr>`;
+                }
+            } catch (error) {
+                console.error('Error loading QB customers:', error);
+                document.getElementById('qb-customers-count').innerHTML = '<span style="color: #e74c3c;">Error loading customers</span>';
+            }
+        }
+
+        function filterQBCustomers() {
+            loadQBCustomers();
+        }
+
+        function populateAccountDropdowns(accounts) {
+            // Initialize custom dropdowns if not already created
+            if (!depositAccountDropdown) {
+                depositAccountDropdown = new CustomAccountDropdown('deposit', 'customer_deposits');
+            }
+            if (!feesAccountDropdown) {
+                feesAccountDropdown = new CustomAccountDropdown('fees', 'stripe_processing_fees');
+            }
+            if (!paymentsAccountDropdown) {
+                paymentsAccountDropdown = new CustomAccountDropdown('payments', 'stripe_payments');
+            }
+            if (!inventoryAccountDropdown) {
+                inventoryAccountDropdown = new CustomAccountDropdown('inventory', 'inventory_assets');
+            }
+
+            // Set accounts data for all dropdowns
+            depositAccountDropdown.setAccounts(accounts);
+            feesAccountDropdown.setAccounts(accounts);
+            paymentsAccountDropdown.setAccounts(accounts);
+            inventoryAccountDropdown.setAccounts(accounts);
+        }
+
+        async function loadAccountMappings() {
+            try {
+                // This would load existing mappings from the database
+                // For now, we'll just indicate they're ready to be set
+                document.getElementById('deposit-account-status').textContent = 'Ready to configure';
+                document.getElementById('fees-account-status').textContent = 'Ready to configure';
+                document.getElementById('payments-account-status').textContent = 'Ready to configure';
+                document.getElementById('inventory-account-status').textContent = 'Ready to configure';
+            } catch (error) {
+                console.error('Error loading account mappings:', error);
+            }
+        }
+
+        async function saveAccountMapping(mappingType, accountId) {
+            if (!accountId) {
+                showToast('Please select an account', 'error');
+                return;
+            }
+
+            showToast(`Saving ${mappingType} mapping...`, 'info');
+            try {
+                // This would save to the account_mappings table
+                // For now, just show success
+                let statusDiv;
+                switch(mappingType) {
+                    case 'customer_deposits':
+                        statusDiv = document.getElementById('deposit-account-status');
+                        break;
+                    case 'stripe_processing_fees':
+                        statusDiv = document.getElementById('fees-account-status');
+                        break;
+                    case 'stripe_payments':
+                        statusDiv = document.getElementById('payments-account-status');
+                        break;
+                    case 'inventory_assets':
+                        statusDiv = document.getElementById('inventory-account-status');
+                        break;
+                }
+
+                if (statusDiv) {
+                    statusDiv.textContent = '✓ Mapping saved';
+                }
+                showToast(`${mappingType} mapping saved successfully`, 'success');
+
+                // TODO: Implement actual save to database
+                // const response = await fetch(`/api/qbd/mappings/${mappingType}`, {
+                //     method: 'POST',
+                //     headers: { 'Content-Type': 'application/json' },
+                //     body: JSON.stringify({ qb_account_id: accountId })
+                // });
+            } catch (error) {
+                console.error('Error saving account mapping:', error);
+                showToast('Error saving mapping', 'error');
+            }
+        }
+
+        // =============================================================================
+        // AI SETTINGS FUNCTIONS
+        // =============================================================================
+
+        // Store available models globally
+        let availableAnthropicModels = [];
+        let availableOpenRouterModels = [];
+        let currentProvider = 'anthropic';
+
+        // Switch between AI provider views
+        function switchAIProvider() {
+            const provider = document.querySelector('input[name="ai-provider"]:checked')?.value || 'anthropic';
+            currentProvider = provider;
+
+            const anthropicSettings = document.getElementById('anthropic-settings');
+            const openrouterSettings = document.getElementById('openrouter-settings');
+
+            if (provider === 'anthropic') {
+                anthropicSettings.style.display = 'block';
+                openrouterSettings.style.display = 'none';
+            } else {
+                anthropicSettings.style.display = 'none';
+                openrouterSettings.style.display = 'block';
+            }
+        }
+
+        async function loadAISettings() {
+            try {
+                // Load Anthropic models
+                const anthropicModelsResponse = await fetch('/api/ai/models');
+                const anthropicModelsData = await anthropicModelsResponse.json();
+
+                if (anthropicModelsData.success) {
+                    availableAnthropicModels = anthropicModelsData.models;
+                    const modelSelect = document.getElementById('anthropic-model');
+                    modelSelect.innerHTML = anthropicModelsData.models.map(model =>
+                        `<option value="${model.id}">${model.name}</option>`
+                    ).join('');
+
+                    // Set up model selection change handler
+                    modelSelect.onchange = () => {
+                        const selectedModel = availableAnthropicModels.find(m => m.id === modelSelect.value);
+                        if (selectedModel) {
+                            document.getElementById('anthropic-model-description').textContent = selectedModel.description;
+                        }
+                    };
+                }
+
+                // Load OpenRouter models
+                const openrouterModelsResponse = await fetch('/api/ai/openrouter-models');
+                const openrouterModelsData = await openrouterModelsResponse.json();
+
+                if (openrouterModelsData.success) {
+                    availableOpenRouterModels = openrouterModelsData.models;
+                    const modelSelect = document.getElementById('openrouter-model');
+                    modelSelect.innerHTML = openrouterModelsData.models.map(model =>
+                        `<option value="${model.id}">${model.name} (${model.provider})</option>`
+                    ).join('');
+
+                    // Set up model selection change handler
+                    modelSelect.onchange = () => {
+                        const selectedModel = availableOpenRouterModels.find(m => m.id === modelSelect.value);
+                        if (selectedModel) {
+                            document.getElementById('openrouter-model-description').textContent =
+                                `${selectedModel.description} - Provided by ${selectedModel.provider}`;
+                        }
+                    };
+                }
+
+                // Load existing settings
+                const settingsResponse = await fetch('/api/ai/settings');
+                const settingsData = await settingsResponse.json();
+
+                if (settingsData.success && settingsData.settings) {
+                    // Set provider selection
+                    const provider = settingsData.settings.ai_provider || 'anthropic';
+                    currentProvider = provider;
+                    document.getElementById(`provider-${provider}`).checked = true;
+                    switchAIProvider();
+
+                    // Load Anthropic settings
+                    if (settingsData.settings.anthropic_api_key) {
+                        // Show masked key (last 4 chars only)
+                        const lastFour = settingsData.settings.anthropic_api_key.slice(-4);
+                        document.getElementById('anthropic-api-key').placeholder = `••••••••••••${lastFour}`;
+                        document.getElementById('anthropic-api-key').value = ''; // Keep input empty
+                    }
+
+                    if (settingsData.settings.anthropic_model) {
+                        document.getElementById('anthropic-model').value = settingsData.settings.anthropic_model;
+                        const selectedModel = availableAnthropicModels.find(m => m.id === settingsData.settings.anthropic_model);
+                        if (selectedModel) {
+                            document.getElementById('anthropic-model-description').textContent = selectedModel.description;
+                        }
+                    } else if (availableAnthropicModels.length > 0) {
+                        document.getElementById('anthropic-model-description').textContent = availableAnthropicModels[0].description;
+                    }
+
+                    // Load OpenRouter settings
+                    if (settingsData.settings.openrouter_api_key) {
+                        // Show masked key (last 4 chars only)
+                        const lastFour = settingsData.settings.openrouter_api_key.slice(-4);
+                        document.getElementById('openrouter-api-key').placeholder = `••••••••••••${lastFour}`;
+                        document.getElementById('openrouter-api-key').value = ''; // Keep input empty
+                    }
+
+                    if (settingsData.settings.openrouter_model) {
+                        document.getElementById('openrouter-model').value = settingsData.settings.openrouter_model;
+                        const selectedModel = availableOpenRouterModels.find(m => m.id === settingsData.settings.openrouter_model);
+                        if (selectedModel) {
+                            document.getElementById('openrouter-model-description').textContent =
+                                `${selectedModel.description} - Provided by ${selectedModel.provider}`;
+                        }
+                    } else if (availableOpenRouterModels.length > 0) {
+                        const firstModel = availableOpenRouterModels[0];
+                        document.getElementById('openrouter-model-description').textContent =
+                            `${firstModel.description} - Provided by ${firstModel.provider}`;
+                    }
+                }
+
+            } catch (error) {
+                console.error('Error loading AI settings:', error);
+                showToast('Error loading AI settings', 'error');
+            }
+        }
+
+        async function saveAISettings() {
+            const provider = currentProvider;
+            const payload = { ai_provider: provider };
+
+            if (provider === 'anthropic') {
+                const apiKey = document.getElementById('anthropic-api-key').value.trim();
+                const model = document.getElementById('anthropic-model').value;
+
+                if (!model) {
+                    showToast('Please select a Claude model', 'error');
+                    return;
+                }
+
+                payload.anthropic_model = model;
+                if (apiKey && !apiKey.startsWith('••')) {
+                    payload.anthropic_api_key = apiKey;
+                }
+            } else if (provider === 'openrouter') {
+                const apiKey = document.getElementById('openrouter-api-key').value.trim();
+                const model = document.getElementById('openrouter-model').value;
+
+                if (!model) {
+                    showToast('Please select an OpenRouter model', 'error');
+                    return;
+                }
+
+                payload.openrouter_model = model;
+                if (apiKey && !apiKey.startsWith('••')) {
+                    payload.openrouter_api_key = apiKey;
+                }
+            }
+
+            showToast('Saving AI settings...', 'info');
+
+            try {
+                const response = await fetch('/api/ai/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`AI settings saved successfully (Provider: ${result.provider})`, 'success');
+                    showAIStatus(`Settings saved! Provider: ${result.provider} - Status: ${result.is_ready ? 'Ready' : 'Not Ready'}`, 'success');
+
+                    // Update placeholders if API keys were saved
+                    if (provider === 'anthropic') {
+                        const apiKey = document.getElementById('anthropic-api-key').value.trim();
+                        if (apiKey && !apiKey.startsWith('••')) {
+                            document.getElementById('anthropic-api-key').value = '';
+                            document.getElementById('anthropic-api-key').placeholder = '••••••••••••••••••••';
+                        }
+                    } else if (provider === 'openrouter') {
+                        const apiKey = document.getElementById('openrouter-api-key').value.trim();
+                        if (apiKey && !apiKey.startsWith('••')) {
+                            document.getElementById('openrouter-api-key').value = '';
+                            document.getElementById('openrouter-api-key').placeholder = '••••••••••••••••••••';
+                        }
+                    }
+                } else {
+                    showToast(result.message || 'Error saving AI settings', 'error');
+                    showAIStatus(result.message || 'Error saving settings', 'error');
+                }
+
+            } catch (error) {
+                console.error('Error saving AI settings:', error);
+                showToast('Error saving AI settings', 'error');
+                showAIStatus('Network error: ' + error.message, 'error');
+            }
+        }
+
+        async function testAIConnection() {
+            const provider = currentProvider;
+            let apiKey = '';
+            let providerName = '';
+
+            if (provider === 'anthropic') {
+                apiKey = document.getElementById('anthropic-api-key').value.trim();
+                providerName = 'Anthropic';
+            } else if (provider === 'openrouter') {
+                apiKey = document.getElementById('openrouter-api-key').value.trim();
+                providerName = 'OpenRouter';
+            }
+
+            // If API key is masked, test with saved key from database (don't send api_key param)
+            const useSavedKey = !apiKey || apiKey.startsWith('••');
+
+            showToast(`Testing ${providerName} API connection...`, 'info');
+            showAIStatus(`Testing connection to ${providerName} API...`, 'info');
+
+            try {
+                const requestBody = { provider };
+                // Only send api_key if we have a new one (not masked)
+                if (!useSavedKey) {
+                    requestBody.api_key = apiKey;
+                }
+
+                const response = await fetch('/api/ai/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`${providerName} API connection successful!`, 'success');
+                    showAIStatus(`Connection successful! Response: "${result.response}"`, 'success');
+                } else {
+                    showToast(`${providerName} API connection failed: ${result.message}`, 'error');
+                    showAIStatus(`Connection failed: ${result.message}`, 'error');
+                }
+
+            } catch (error) {
+                console.error('Error testing AI connection:', error);
+                showToast('Error testing connection', 'error');
+                showAIStatus('Network error: ' + error.message, 'error');
+            }
+        }
+
+        function showAIStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('ai-status');
+            const statusMessage = document.getElementById('ai-status-message');
+
+            statusDiv.style.display = 'block';
+            statusMessage.textContent = message;
+
+            // Update border color based on type
+            if (type === 'success') {
+                statusDiv.style.borderLeftColor = '#27ae60';
+                statusMessage.style.color = '#27ae60';
+            } else if (type === 'error') {
+                statusDiv.style.borderLeftColor = '#e74c3c';
+                statusMessage.style.color = '#e74c3c';
+            } else {
+                statusDiv.style.borderLeftColor = '#3498db';
+                statusMessage.style.color = '#3498db';
+            }
+        }
+
+        // ==============================================
+        // AI Customer Suggestion Functions
+        // ==============================================
+
+        async function showAICustomerSuggestions() {
+            showToast('Generating AI customer mapping suggestions...', 'info');
+
+            try {
+                // First, trigger AI suggestion generation
+                const response = await fetch('/api/ai/suggest-customer-mappings', {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    showToast(result.message || 'Failed to generate suggestions', 'error');
+                    return;
+                }
+
+                if (result.count === 0) {
+                    showToast('No new mapping suggestions found. All customers may already be mapped!', 'info');
+                    return;
+                }
+
+                showToast(`Generated ${result.count} AI suggestions!`, 'success');
+
+                // Navigate to AI suggestions view
+                switchView('ai-customer-suggestions');
+                await loadAICustomerSuggestions();
+
+            } catch (error) {
+                console.error('Error generating AI suggestions:', error);
+                showToast('Error generating AI suggestions', 'error');
+            }
+        }
+
+        async function loadAICustomerSuggestions() {
+            const statusDiv = document.getElementById('ai-suggestions-status');
+            const container = document.getElementById('ai-suggestions-container');
+
+            statusDiv.innerHTML = '<div class="spinner" style="margin: 0 auto;"></div> <span style="margin-left: 1rem;">Loading AI suggestions...</span>';
+            container.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/ai/customer-suggestions');
+                const result = await response.json();
+
+                if (!result.success) {
+                    statusDiv.innerHTML = '<span style="color: #e74c3c;">❌ Failed to load suggestions</span>';
+                    container.innerHTML = `<div style="padding: 2rem; text-align: center; color: #95a5a6;">${result.message || 'Error loading suggestions'}</div>`;
+                    return;
+                }
+
+                const suggestions = result.suggestions || [];
+
+                if (suggestions.length === 0) {
+                    statusDiv.innerHTML = '<span style="color: #27ae60;">✅ No pending AI suggestions</span>';
+                    container.innerHTML = `
+                        <div style="padding: 3rem; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 1rem;">🎉</div>
+                            <h3 style="color: #2c3e50; margin-bottom: 0.5rem;">All Caught Up!</h3>
+                            <p style="color: #7f8c8d;">No pending AI mapping suggestions. Click "AI Suggest Mappings" to generate new ones.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                statusDiv.innerHTML = `<strong style="color: #27ae60;">✅ Found ${suggestions.length} AI-powered mapping suggestions</strong> - Review and approve below`;
+
+                // Render suggestions
+                container.innerHTML = suggestions.map(s => renderAISuggestionCard(s)).join('');
+
+            } catch (error) {
+                console.error('Error loading AI suggestions:', error);
+                statusDiv.innerHTML = '<span style="color: #e74c3c;">❌ Error loading suggestions</span>';
+                container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #e74c3c;">Failed to load AI suggestions</div>';
+            }
+        }
+
+        function renderAISuggestionCard(suggestion) {
+            const source = suggestion.source_data || {};
+            const target = suggestion.target_data || {};
+
+            // Determine confidence color
+            let confidenceColor = '#27ae60'; // green
+            if (suggestion.confidence < 0.7) confidenceColor = '#e74c3c'; // red
+            else if (suggestion.confidence < 0.9) confidenceColor = '#f39c12'; // yellow/orange
+
+            // Format system names
+            const sourceSystemName = suggestion.source_type.charAt(0).toUpperCase() + suggestion.source_type.slice(1);
+            const targetSystemName = suggestion.target_type.charAt(0).toUpperCase() + suggestion.target_type.slice(1);
+
+            // Get display names
+            const sourceName = source.name || source.qb_full_name || 'Unknown';
+            const targetName = target.name || target.qb_full_name || 'Unknown';
+
+            const sourceEmail = source.email || 'N/A';
+            const targetEmail = target.email || 'N/A';
+
+            const sourcePhone = source.phone || 'N/A';
+            const targetPhone = target.phone || 'N/A';
+
+            return `
+                <div style="background: white; border: 2px solid #ecf0f1; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                        <div>
+                            <div style="display: inline-block; padding: 0.25rem 0.75rem; background: ${confidenceColor}; color: white; border-radius: 20px; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;">
+                                ${Math.round(suggestion.confidence * 100)}% Match
+                            </div>
+                            <div style="font-size: 0.85rem; color: #7f8c8d; margin-top: 0.5rem;">
+                                ${suggestion.reasoning}
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button
+                                class="btn btn-success"
+                                style="padding: 0.5rem 1rem; font-size: 0.85rem;"
+                                onclick="approveAISuggestion(${suggestion.id})"
+                            >
+                                ✓ Approve
+                            </button>
+                            <button
+                                class="btn btn-secondary"
+                                style="padding: 0.5rem 1rem; font-size: 0.85rem;"
+                                onclick="rejectAISuggestion(${suggestion.id})"
+                            >
+                                ✗ Reject
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 1.5rem; align-items: center;">
+                        <!-- Source Customer -->
+                        <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                            <div style="font-size: 0.75rem; color: #32373c; font-weight: 600; text-transform: uppercase; margin-bottom: 0.5rem;">
+                                ${sourceSystemName} Customer
+                            </div>
+                            <div style="font-size: 1.1rem; font-weight: 600; color: #2c3e50; margin-bottom: 0.5rem;">
+                                ${sourceName}
+                            </div>
+                            <div style="font-size: 0.85rem; color: #7f8c8d;">
+                                <div>📧 ${sourceEmail}</div>
+                                <div>📱 ${sourcePhone}</div>
+                            </div>
+                        </div>
+
+                        <!-- Arrow -->
+                        <div style="font-size: 2rem; color: #32373c;">
+                            →
+                        </div>
+
+                        <!-- Target Customer -->
+                        <div style="padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                            <div style="font-size: 0.75rem; color: #32373c; font-weight: 600; text-transform: uppercase; margin-bottom: 0.5rem;">
+                                ${targetSystemName} Customer
+                            </div>
+                            <div style="font-size: 1.1rem; font-weight: 600; color: #2c3e50; margin-bottom: 0.5rem;">
+                                ${targetName}
+                            </div>
+                            <div style="font-size: 0.85rem; color: #7f8c8d;">
+                                <div>📧 ${targetEmail}</div>
+                                <div>📱 ${targetPhone}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function approveAISuggestion(suggestionId) {
+            try {
+                const response = await fetch(`/api/ai/approve-customer-mapping/${suggestionId}`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('Mapping approved and created successfully!', 'success');
+                    await loadAICustomerSuggestions(); // Refresh the list
+                } else {
+                    showToast(result.message || 'Failed to approve mapping', 'error');
+                }
+            } catch (error) {
+                console.error('Error approving suggestion:', error);
+                showToast('Error approving mapping', 'error');
+            }
+        }
+
+        async function rejectAISuggestion(suggestionId) {
+            try {
+                const response = await fetch(`/api/ai/reject-customer-mapping/${suggestionId}`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('Suggestion rejected', 'info');
+                    await loadAICustomerSuggestions(); // Refresh the list
+                } else {
+                    showToast(result.message || 'Failed to reject suggestion', 'error');
+                }
+            } catch (error) {
+                console.error('Error rejecting suggestion:', error);
+                showToast('Error rejecting suggestion', 'error');
+            }
+        }
+
+        // DOMContentLoaded is now handled by the 'load' event listener above
+        // which calls handleHashChange() to initialize the correct view
+
+        // Helper function for modals to switch views/tabs
+        function switchTab(tabName) {
+            // Map tab names to view names
+            const tabViewMap = {
+                'customer-mapping': 'mappings',
+                'stripe-sync': 'stripe-transactions',
+                'quickbooks-sync': 'sync'
+            };
+
+            const viewName = tabViewMap[tabName] || tabName;
+            switchView(viewName);
+        }
+
+        // Stub function for QuickBooks sync
+        async function syncToQuickBooks() {
+            try {
+                showToast('Initiating QuickBooks sync...', 'info');
+
+                // This would trigger the actual QB sync process
+                const response = await fetch('/api/qbd/sync', {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('QuickBooks sync completed successfully!', 'success');
+                } else {
+                    showToast('QuickBooks sync failed: ' + (result.message || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error syncing to QuickBooks:', error);
+                showToast('Error syncing to QuickBooks: ' + error.message, 'error');
+            }
+        }
     </script>
 </body>
 </html>

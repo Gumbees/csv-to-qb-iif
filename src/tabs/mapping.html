@@ -1,0 +1,45 @@
+<div class="tab-content" id="mapping">
+  <div class="config-section">
+    <div class="config-header">
+      <h3>Customer Mapping Tool</h3>
+    </div>
+    <div class="mapping-section">
+      <div class="customer-list" id="stripeCustomers">
+        <h4>Stripe Customers</h4>
+        <!-- Stripe customers will be listed here -->
+      </div>
+      <div class="customer-list" id="haloCustomers">
+        <h4>HaloPSA Clients</h4>
+        <!-- HaloPSA clients will be listed here -->
+      </div>
+    </div>
+    <div class="actions" style="margin-top: 20px;">
+      <button class="btn" id="loadStripeCustomers">Load Stripe Customers</button>
+      <button class="btn" id="loadHaloCustomers">Load HaloPSA Clients</button>
+      <button class="btn success" id="autoMatch">Auto-match</button>
+      <button class="btn primary" id="saveMappings">Save Mappings</button>
+    </div>
+    <div id="mappingResults" style="margin-top: 20px;">
+      <!-- Auto-match results will be shown here -->
+    </div>
+  </div>
+  
+  <div class="config-section">
+    <div class="config-header">
+      <h3>Existing Mappings</h3>
+    </div>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Stripe Customer</th>
+          <th>HaloPSA Client</th>
+          <th>Match Type</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="mappingsTable">
+        <!-- Existing mappings will be loaded here -->
+      </tbody>
+    </table>
+  </div>
+</div>

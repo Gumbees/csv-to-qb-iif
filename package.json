@@ -11,6 +11,7 @@
     "test-qbwc": "node test-qbwc-setup.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "axios": "^1.12.2",
     "better-sqlite3": "^12.4.1",
     "body-parser": "^1.20.2",

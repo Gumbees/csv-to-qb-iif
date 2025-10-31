@@ -1,0 +1,284 @@
+<div class="config-section">
+  <div class="config-header">
+    <h3>QuickBooks Item Synchronization</h3>
+    <p class="subtitle">Extract items from HaloPSA invoices and purchase orders, then sync to QuickBooks Desktop</p>
+  </div>
+
+  <!-- Item Extraction Section -->
+  <div style="margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 5px;">
+    <h4>Step 1: Extract Items from HaloPSA Data</h4>
+    <p>Extract unique items from HaloPSA invoices and purchase orders. Items are automatically classified as Service, Inventory, or Non-Inventory based on their characteristics.</p>
+
+    <button id="extractItems" class="btn">Extract Items from HaloPSA</button>
+
+    <div id="extractionProgress" class="progress-container" style="display: none; margin-top: 15px;">
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: 0%"></div>
+      </div>
+      <div class="progress-text" id="extractionProgressText">Extracting items...</div>
+    </div>
+
+    <div id="extractionResult" style="margin-top: 15px;"></div>
+  </div>
+
+  <!-- Unsynced Items Display -->
+  <div style="margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 5px;">
+    <h4>Step 2: Review Items Ready for QuickBooks</h4>
+    <p>These items have been extracted from HaloPSA but haven't been synced to QuickBooks yet.</p>
+
+    <button id="refreshUnsyncedItems" class="btn secondary">Refresh Item List</button>
+
+    <div id="unsyncedItemsStats" style="margin: 15px 0; padding: 15px; background: white; border-radius: 5px;"></div>
+
+    <!-- Service Items -->
+    <div style="margin-top: 20px;">
+      <h5 style="color: #007acc;">Service Items <span id="serviceItemCount" class="badge info">0</span></h5>
+      <div id="serviceItemsTable" style="max-height: 200px; overflow-y: auto; margin-top: 10px;"></div>
+    </div>
+
+    <!-- Inventory Items -->
+    <div style="margin-top: 20px;">
+      <h5 style="color: #28a745;">Inventory Items <span id="inventoryItemCount" class="badge success">0</span></h5>
+      <div id="inventoryItemsTable" style="max-height: 200px; overflow-y: auto; margin-top: 10px;"></div>
+    </div>
+
+    <!-- Non-Inventory Items -->
+    <div style="margin-top: 20px;">
+      <h5 style="color: #ffc107;">Non-Inventory Items <span id="nonInventoryItemCount" class="badge warning">0</span></h5>
+      <div id="nonInventoryItemsTable" style="max-height: 200px; overflow-y: auto; margin-top: 10px;"></div>
+    </div>
+  </div>
+
+  <!-- QuickBooks Web Connector Sync -->
+  <div style="margin-bottom: 30px; padding: 20px; background: #e3f2fd; border-left: 4px solid #007acc; border-radius: 5px;">
+    <h4>Step 3: Sync to QuickBooks via Web Connector</h4>
+    <p><strong>Important:</strong> Items are automatically synced when you run QuickBooks Web Connector. Make sure QuickBooks Desktop is open and click "Update Selected" in QBWC.</p>
+
+    <div style="margin: 15px 0;">
+      <p><strong>How it works:</strong></p>
+      <ol>
+        <li>Extract items using the button above</li>
+        <li>Open QuickBooks Desktop with your company file</li>
+        <li>Open QuickBooks Web Connector</li>
+        <li>Click "Update Selected" to sync items</li>
+        <li>Items will be marked as synced automatically</li>
+      </ol>
+    </div>
+
+    <div style="margin-top: 15px;">
+      <p><strong>Quick Links:</strong></p>
+      <a href="http://localhost:3000/qbwc/config" target="_blank" class="btn secondary">Download QWC File</a>
+      <a href="http://localhost:3000/qbwc/status" target="_blank" class="btn secondary">Check QBWC Status</a>
+    </div>
+
+    <!-- Manual QBXML Generation (for testing) -->
+    <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 5px;">
+      <h5>Advanced: Manual QBXML Generation (Testing Only)</h5>
+      <p style="font-size: 0.9em;">Generate QBXML manually for inspection. This is normally handled automatically by QBWC.</p>
+      <button id="generateQBXML" class="btn secondary">Generate QBXML</button>
+      <div id="qbxmlOutput" style="margin-top: 10px; display: none;">
+        <textarea id="qbxmlText" readonly style="width: 100%; height: 300px; font-family: monospace; font-size: 12px;"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sync Log -->
+  <div style="padding: 20px; background: #f8f9fa; border-radius: 5px;">
+    <h4>Sync History</h4>
+    <p>Recent item synchronization operations</p>
+    <div id="syncLogTable" style="margin-top: 15px;"></div>
+  </div>
+</div>
+
+<style>
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  font-size: 0.85em;
+  border-radius: 12px;
+  color: white;
+}
+.badge.info { background: #007acc; }
+.badge.success { background: #28a745; }
+.badge.warning { background: #ffc107; color: black; }
+
+.item-table {
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.item-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.item-table th, .item-table td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+.item-table th {
+  background: #f0f0f0;
+  font-weight: 600;
+}
+.item-table tr:hover {
+  background: #f8f9fa;
+}
+</style>
+
+<script>
+// Item Sync Functions
+async function extractItems() {
+  const btn = document.getElementById('extractItems');
+  const progressContainer = document.getElementById('extractionProgress');
+  const progressFill = progressContainer.querySelector('.progress-fill');
+  const progressText = document.getElementById('extractionProgressText');
+  const resultDiv = document.getElementById('extractionResult');
+
+  btn.disabled = true;
+  btn.textContent = 'Extracting...';
+  progressContainer.style.display = 'block';
+  resultDiv.innerHTML = '';
+
+  try {
+    progressFill.style.width = '30%';
+    progressText.textContent = 'Analyzing HaloPSA invoices...';
+
+    const response = await fetch('/api/items/extract', { method: 'POST' });
+    const result = await response.json();
+
+    progressFill.style.width = '100%';
+    progressText.textContent = 'Extraction complete!';
+
+    if (result.success) {
+      resultDiv.innerHTML = `
+        <div class="status success">
+          <strong>✅ Extraction Successful!</strong><br>
+          Total Items: ${result.total}<br>
+          New: ${result.new} | Updated: ${result.updated} | Skipped: ${result.skipped}
+          ${result.errors > 0 ? `<br>⚠️ Errors: ${result.errors}` : ''}
+        </div>
+      `;
+
+      // Refresh the unsynced items list
+      setTimeout(() => loadUnsyncedItems(), 1000);
+    } else {
+      throw new Error(result.message || 'Extraction failed');
+    }
+
+    setTimeout(() => {
+      progressContainer.style.display = 'none';
+      btn.disabled = false;
+      btn.textContent = 'Extract Items from HaloPSA';
+    }, 2000);
+
+  } catch (error) {
+    console.error('Error extracting items:', error);
+    progressContainer.style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = 'Extract Items from HaloPSA';
+    resultDiv.innerHTML = `<div class="status error">Error: ${error.message}</div>`;
+  }
+}
+
+async function loadUnsyncedItems() {
+  try {
+    const response = await fetch('/api/items/unsynced');
+    const result = await response.json();
+
+    if (result.success) {
+      const { counts, grouped } = result;
+
+      // Update stats
+      document.getElementById('unsyncedItemsStats').innerHTML = `
+        <strong>Unsynced Items Summary:</strong><br>
+        Total: ${counts.total} items ready for QuickBooks<br>
+        Service: ${counts.service} | Inventory: ${counts.inventory} | Non-Inventory: ${counts.nonInventory}
+      `;
+
+      // Update counts
+      document.getElementById('serviceItemCount').textContent = counts.service;
+      document.getElementById('inventoryItemCount').textContent = counts.inventory;
+      document.getElementById('nonInventoryItemCount').textContent = counts.nonInventory;
+
+      // Render tables
+      renderItemTable('serviceItemsTable', grouped.service);
+      renderItemTable('inventoryItemsTable', grouped.inventory);
+      renderItemTable('nonInventoryItemsTable', grouped.nonInventory);
+    }
+  } catch (error) {
+    console.error('Error loading unsynced items:', error);
+  }
+}
+
+function renderItemTable(containerId, items) {
+  const container = document.getElementById(containerId);
+
+  if (!items || items.length === 0) {
+    container.innerHTML = '<p style="padding: 10px; color: #666; font-style: italic;">No items</p>';
+    return;
+  }
+
+  const html = `
+    <div class="item-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Sales Price</th>
+            <th>Purchase Cost</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(item => `
+            <tr>
+              <td><strong>${item.name}</strong></td>
+              <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.description || 'N/A'}</td>
+              <td>$${(item.sales_price || 0).toFixed(2)}</td>
+              <td>$${(item.purchase_cost || 0).toFixed(2)}</td>
+              <td>${item.source_system || 'unknown'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  container.innerHTML = html;
+}
+
+async function generateQBXML() {
+  try {
+    const response = await fetch('/api/items/sync-to-qb', { method: 'POST' });
+    const result = await response.json();
+
+    if (result.success) {
+      const outputDiv = document.getElementById('qbxmlOutput');
+      const textArea = document.getElementById('qbxmlText');
+
+      textArea.value = result.qbxml || 'No QBXML generated (no items to sync)';
+      outputDiv.style.display = 'block';
+
+      if (result.qbxml) {
+        showStatus(`Generated QBXML for ${result.itemCount} items`, 'success');
+      } else {
+        showStatus('No items to sync', 'info');
+      }
+    } else {
+      showStatus('Failed to generate QBXML: ' + result.message, 'error');
+    }
+  } catch (error) {
+    console.error('Error generating QBXML:', error);
+    showStatus('Error generating QBXML: ' + error.message, 'error');
+  }
+}
+
+// Initialize when tab is loaded
+document.getElementById('extractItems').addEventListener('click', extractItems);
+document.getElementById('refreshUnsyncedItems').addEventListener('click', loadUnsyncedItems);
+document.getElementById('generateQBXML').addEventListener('click', generateQBXML);
+
+// Load unsynced items on initialization
+loadUnsyncedItems();
+</script>
