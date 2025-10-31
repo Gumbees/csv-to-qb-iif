@@ -49,7 +49,6 @@ temp.html
 
 # Docker and build artifacts
 .docker/
-.dockerignore
 dist/
 build/
 node_modules/

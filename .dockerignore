@@ -1,0 +1,123 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+
+# Node modules (will be installed in container)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.code-workspace
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+nul
+
+# Build artifacts
+dist/
+build/
+out/
+app/
+release/
+
+# Documentation (keep README.md)
+*.md
+!README.md
+!CLAUDE.md
+
+# Test and debug scripts
+test-*.js
+test-*.html
+test_*.sql
+check-*.js
+check-*.ps1
+debug-*.js
+verify-*.js
+populate-*.js
+migrate-*.js
+
+# QuickBooks data files
+*.iif
+*.csv
+*.qbw
+*.qbw.*
+*.zip
+QBBackupTemp*/
+QuickBooksAutoDataRecovery/
+~2024 Installer/
+_ul
+Debug/
+dental_t1.*
+Documents/
+
+# Database files (should be mounted as volume)
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs and temporary files
+*.log
+debug.log
+temp.html
+*.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+venv/
+.venv/
+env/
+ENV/
+pip-wheel-metadata/
+*.egg-info/
+.eggs/
+htmlcov/
+.coverage*
+coverage.xml
+
+# Backup files
+*.backup
+src/app.js.backup
+
+# Docker-related
+.dockerignore
+.dockerfile
+docker-compose.override.yml
+
+# Electron build
+electron-builder.yml
